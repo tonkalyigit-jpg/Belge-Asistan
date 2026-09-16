@@ -163,6 +163,14 @@ retrieval:
   # kararı gürültülü (aynı soruda 24/9/3 alakalı); bu eşik cevabın kapsamını
   # tek bir ucuz model çağrısının keyfine bırakmıyor.
   kesin_alaka: 0.60
+  # Alakalı bulunan chunk'ın kaç komşusu da bağlama alınsın. Anlatı chunk
+  # sınırında kesiliyor: ispatın ilk adımı bir parçada, devamı diğerinde.
+  # Bütçe yine karakterle sınırlı.
+  komsu_genislik: 1
+  # Pseudo-relevance feedback: ilk turda bulunanların vektörleri soruya bu
+  # ağırlıkla karışıp ikinci bir arama yapılıyor. Sorunun kelimeleri belgenin
+  # kelimeleri değil; ağırlık yine sorudan yana.
+  geri_besleme_agirligi: 0.3
   candidate_k: 20              # her aramadan (dense/bm25) alınan aday
   rrf_k: 60
   # Puanlayıcıya gitmeden önceki ucuz eleme. Network Asistanı'nda 0.50

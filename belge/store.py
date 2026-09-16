@@ -270,6 +270,45 @@ class VectorStore:
             for r in rows
         ]
 
+    def vektorler(self, row_ids: list[int]) -> np.ndarray:
+        """Saklı chunk vektörleri. Yeniden gömme yok: indekste zaten duruyorlar."""
+        self.load()
+        with _lock:
+            sira = {rid: i for i, rid in enumerate(self._row_ids)}
+            secili = [sira[r] for r in row_ids if r in sira and sira[r] < len(self._vectors)]
+            if not secili:
+                return np.zeros((0, self.dim), dtype=np.float32)
+            return self._vectors[secili].copy()
+
+    def komsular(self, istekler: list[tuple[int, int]]) -> list[Hit]:
+        """Verilen (belge, ordinal) çiftlerindeki chunk'lar.
+
+        Bir bölümün anlatısı chunk sınırında kesiliyor: ispatın ilk adımı bir
+        parçada, devamı diğerinde. Arama yalnızca anahtar kelimeyi taşıyan
+        parçayı getiriyor ve model yarım bir anlatı okuyor. Komşuları
+        çağırmak yerel ve ücretsiz.
+        """
+        if not istekler:
+            return []
+        kosul = " OR ".join(["(c.document_id = ? AND c.ordinal = ?)"] * len(istekler))
+        degerler = [x for cift in istekler for x in cift]
+        rows = db.connect().execute(
+            f"""SELECT c.row_id, c.document_id, c.ordinal, c.kind, c.section,
+                       c.page_start, c.page_end, c.text, d.title, d.filename
+                FROM chunks c JOIN documents d ON d.id = c.document_id
+                WHERE c.deleted = 0 AND c.kind = 'body' AND ({kosul})
+                ORDER BY c.document_id, c.ordinal""",
+            degerler,
+        ).fetchall()
+        return [
+            Hit(row_id=r["row_id"], document_id=r["document_id"],
+                title=r["title"] or r["filename"], filename=r["filename"], text=r["text"],
+                section=r["section"] or "", kind=r["kind"], ordinal=r["ordinal"],
+                page_start=r["page_start"], page_end=r["page_end"], dense_score=0.0,
+                fused_score=0.0)
+            for r in rows
+        ]
+
     def size(self) -> int:
         """Aramaya giren chunk sayısı."""
         self.load()

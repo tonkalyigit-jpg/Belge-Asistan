@@ -330,3 +330,35 @@ def test_puanlayici_takip_sorusunun_cozulmus_halini_goruyor(belgeler, fake_llm):
     assert gorulen, "puanlayıcı hiç çağrılmadı"
     assert "gecikme cezası" in gorulen[0]
     assert "daha detaylı anlat" not in gorulen[0]
+
+
+def test_komsu_chunklar_baglama_ekleniyor(belgeler, fake_llm):
+    """Anlatı chunk sınırında kesilmemeli.
+
+    ÖLÇÜLDÜ (ders notu, "Stokes teoremini anlat"): teoremin ifadesi bir
+    parçada, ispat adımları sonrakinde, örnek hesapları iki parça ötede.
+    Arama yalnızca anahtar kelimeyi taşıyan parçayı alakalı buluyordu ve
+    model yarım bir ispat okuyordu.
+    """
+    fake_llm({"classifier": sinif("belge_ici", ids=[belgeler["kuzey"]]),
+              "grade": notlar(1), "generate": "**Kısa cevap:** Binde 3.",
+              "hallucination": GROUNDED, "sufficiency": SUFFICIENT})
+    s = graph.run("Kuzey sözleşmesinde gecikme cezası oranı nedir?", persist=False)
+    komsu_notu = [n for n in s.warnings if "komşu chunk" in n]
+    # Kuzey sözleşmesi tam okumaya giriyorsa komşuya gerek yok; girmiyorsa
+    # puanlayıcının tek parçası komşularıyla genişlemiş olmalı.
+    assert s.full_context or komsu_notu
+
+
+def test_komsu_ekleme_butceyi_asmiyor():
+    from belge.store import Hit
+    from core.graph import _komsulari_ekle
+    from core.state import QueryState
+    import config
+
+    butce = int(config.get("retrieval.context_chars", 12000))
+    s = QueryState(query="x")
+    s.graded_hits = [Hit(row_id=1, document_id=1, title="B", filename="b.pdf",
+                         text="x" * (butce + 10), ordinal=5)]
+    _komsulari_ekle(s)
+    assert len(s.graded_hits) == 1     # bütçe dolu: komşu eklenmedi

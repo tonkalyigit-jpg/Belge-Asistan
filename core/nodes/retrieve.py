@@ -83,12 +83,60 @@ def run(state: QueryState) -> QueryState:
         for q, v in zip(queries, vectors)
     ]
     bulunan = _fuse(per_query, top_k=max_chunks, max_per_doc=cap)
+    bulunan = _geri_besleme(store, state, bulunan, scope, cap, max_chunks)
     state.hits = _butceye_gore(bulunan, en_az=top_k)
     if len(state.hits) > top_k:
         karakter = sum(len(h.text) for h in state.hits)
         state.note(f"Bağlam bütçesi: {len(state.hits)} chunk, {karakter} karakter "
                    f"(taban {top_k} chunk)")
     return state
+
+
+def _geri_besleme(store, state: QueryState, bulunan: list, scope, cap, max_chunks: int) -> list:
+    """Bulunanların kendisiyle ikinci bir arama (pseudo-relevance feedback).
+
+    Sorunun kelimeleri belgenin kelimeleri değil. ÖLÇÜLDÜ (ders notu,
+    "Stokes teoremini anlat"): teoremin bölümü geliyor ama teoremi anlamlı
+    kılan `curl` tanımı ("birim alan başına sirkülasyon", ayrı bir bölüm)
+    hiç gelmiyordu — soruda "curl" kelimesi geçmiyor, o bölümde de "Stokes"
+    geçmiyor. İlk turda bulunan parçaların VEKTÖRLERİ soruya karıştırılınca
+    arama, belgenin kendi diliyle komşu kavramlara ulaşıyor.
+
+    Ağırlık sorudan yana (0.7): geri besleme sorguyu yönlendiriyor, ele
+    geçirmiyor. Sonuçlar RRF ile birleşiyor, yani ilk turun sırası baskın
+    kalıyor. Maliyet yerel bir matris çarpımı — model çağrısı yok.
+    """
+    if not bulunan or state.query_vector is None:
+        return bulunan
+    katsayi = float(config.get("retrieval.geri_besleme_agirligi", 0.3))
+    if katsayi <= 0:
+        return bulunan
+    # Özet chunk'ı merkeze KATILMIYOR: belgenin tamamını anlatan genel bir
+    # metin, merkezi sorudan uzaklaştırıp aramayı belgenin ortalamasına
+    # çekiyor. Geri besleme gövde parçalarından geliyor.
+    govde = [h for h in bulunan if h.kind == "body"][:3]
+    ilk = [h.row_id for h in govde]
+    vektorler = store.vektorler(ilk)
+    if len(vektorler) == 0:
+        return bulunan
+
+    import numpy as np
+
+    merkez = vektorler.mean(axis=0)
+    karisim = (1 - katsayi) * state.query_vector + katsayi * merkez
+    norm = float(np.linalg.norm(karisim))
+    if norm == 0:
+        return bulunan
+    karisim = (karisim / norm).astype("float32")
+
+    ek = store.search(state.search_query or state.query, query_vector=karisim,
+                      top_k=max_chunks, document_ids=scope, max_per_document=cap)
+    birlesik = _fuse([bulunan, ek], top_k=max_chunks, max_per_doc=cap)
+    yeni = len({h.row_id for h in birlesik} - {h.row_id for h in bulunan})
+    if yeni:
+        state.note(f"Geri beslemeli arama {yeni} yeni chunk getirdi "
+                   f"(belgenin kendi diliyle komşu kavramlar)")
+    return birlesik
 
 
 def _butceye_gore(hits: list, *, en_az: int) -> list:

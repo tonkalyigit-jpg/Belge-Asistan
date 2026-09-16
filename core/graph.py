@@ -199,6 +199,9 @@ def run(
         state.note("Yüklenen belgelerde alakalı bir bölüm bulunamadı")
         return _finish(state, budget, persist)
 
+    if not state.full_context:
+        _komsulari_ekle(state)
+
     if not grade.is_sufficient(state):
         # Eşiğin altında ama sıfır değil: elimizdekiyle cevap veriyoruz ve
         # kaynağın zayıf olduğunu açıkça işaretliyoruz.
@@ -297,6 +300,51 @@ def run(
         state.note("Yeniden üretim bütçesi doldu, cevap eksik kalmış olabilir")
 
     return _finish(state, budget, persist)
+
+
+def _komsulari_ekle(state: QueryState) -> None:
+    """Alakalı bulunan her chunk'ın komşularını da bağlama alır.
+
+    Chunk sınırı, anlatının sınırı değil. ÖLÇÜLDÜ (Elektromanyetik Alanlar
+    ders notu, "Stokes teoremini anlat"): teoremin ifadesi bir parçada, ispatın
+    "yüzeyi N parçaya böl" adımı sonrakinde, örneğin çizgi integrali
+    hesapları iki parça ötede. Arama yalnızca "Stokes" kelimesini taşıyan
+    parçayı alakalı buluyor ve model yarım bir ispat okuyor.
+
+    Komşu getirmek yerel ve ücretsiz (SQLite); bütçe yine karakterle sınırlı,
+    yani bağlam kontrolsüz büyümüyor. Komşular alaka sırasının SONUNA
+    ekleniyor: sıralamayı aramanın kararı belirlemeye devam ediyor.
+    """
+    if not state.graded_hits:
+        return
+    butce = int(config.get("retrieval.context_chars", 12000))
+    genislik = int(config.get("retrieval.komsu_genislik", 1))
+    kullanilan = sum(len(h.text) for h in state.graded_hits)
+    if kullanilan >= butce or genislik <= 0:
+        return
+
+    elde = {(h.document_id, h.ordinal) for h in state.graded_hits}
+    istekler: list[tuple[int, int]] = []
+    for hit in state.graded_hits:
+        if hit.kind != "body":
+            continue
+        for kayma in range(-genislik, genislik + 1):
+            anahtar = (hit.document_id, hit.ordinal + kayma)
+            if kayma and anahtar not in elde and anahtar not in istekler:
+                istekler.append(anahtar)
+    if not istekler:
+        return
+
+    eklenen = []
+    for komsu in get_store().komsular(istekler):
+        if kullanilan + len(komsu.text) > butce:
+            continue
+        eklenen.append(komsu)
+        kullanilan += len(komsu.text)
+    if eklenen:
+        state.graded_hits = state.graded_hits + eklenen
+        state.note(f"{len(eklenen)} komşu chunk bağlama eklendi "
+                   f"(anlatı chunk sınırında kesilmesin); toplam {kullanilan} karakter")
 
 
 def _belgelerde_var_mi(state: QueryState) -> bool:
