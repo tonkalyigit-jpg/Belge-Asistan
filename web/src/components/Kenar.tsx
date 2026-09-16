@@ -41,6 +41,96 @@ export function Kenar(p: Props) {
   const girdi = useRef<HTMLInputElement>(null);
   const yonetici = p.ben.rol === "admin";
 
+  const benimkiler = p.belgeler.filter(
+    (b) => b.owner_id === p.ben.id && b.paylasim !== "ortak");
+  const ortaklar = p.belgeler.filter((b) => b.paylasim === "ortak");
+
+  function belgeSatiri(belge: Belge) {
+    const ad = belge.title || belge.filename;
+    const secili = acikBelge === belge.id;
+    const odakli = p.odak === belge.id;
+    const benim = belge.owner_id === p.ben.id;
+
+    if (silinecekBelge === belge.id) {
+      return (
+        <div key={belge.id}>
+          <div className="onay">“{ad}” silinsin mi?</div>
+          <div className="onay-dugmeler">
+            <button className="evet"
+                    onClick={() => { p.onBelgeSil(belge.id); setSilinecekBelge(null); }}>
+              Sil
+            </button>
+            <button onClick={() => setSilinecekBelge(null)}>Vazgeç</button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={belge.id}>
+        <div className="satir">
+          {/* <button> DEĞİL, role="button": Chrome bir butonun içindeki her
+              kutuyu "blockify" ediyor ve `-webkit-line-clamp` çalışmıyor. */}
+          <div className={`satir-ad${odakli ? " secili" : ""}`}
+               role="button" tabIndex={0} aria-expanded={secili} title={ad}
+               onClick={() => setAcikBelge(secili ? null : belge.id)}
+               onKeyDown={(e) => {
+                 if (e.key === "Enter" || e.key === " ") {
+                   e.preventDefault();
+                   setAcikBelge(secili ? null : belge.id);
+                 }
+               }}>
+            <span className="ad">
+              {odakli ? "◉ " : ""}
+              {belge.status === "processing" ? "… " : belge.status === "failed" ? "! " : ""}
+              {ad}
+            </span>
+          </div>
+          {/* Silme yalnızca SAHİBİNDE: ortak havuzdaki belgeyi kullanan
+              silemez, yönetici de başkasınınkini silmez. */}
+          {benim && (
+            <button className="satir-sil" title={t.delete_doc} aria-label={t.delete_doc}
+                    onClick={() => setSilinecekBelge(belge.id)}>
+              <Ikon ad="delete" />
+            </button>
+          )}
+        </div>
+
+        {secili && (
+          <div className="belge-bilgi">
+            <dl>
+              <div><dt>{t.doc_uploaded}</dt><dd>{tarih(belge.added_at)}</dd></div>
+              {tur(belge.summary) && (
+                <div><dt>{t.doc_type}</dt><dd>{tur(belge.summary)}</dd></div>
+              )}
+              <div>
+                <dt>{t.doc_pages}</dt>
+                <dd>{belge.page_count}{belge.ocr_pages ? ` · ${belge.ocr_pages} ${t.ocr_pages}` : ""}</dd>
+              </div>
+              <div><dt>{t.doc_file}</dt><dd>{belge.filename}</dd></div>
+              <div>
+                <dt>Erişim</dt>
+                <dd>{belge.paylasim === "ortak" ? "şirkete açık" : "yalnızca siz"}</dd>
+              </div>
+            </dl>
+            {belge.status === "failed" ? (
+              <p className="kucuk-not">{belge.error || "işlenemedi"}</p>
+            ) : (
+              <button className="odak-dugme"
+                      onClick={() => {
+                        p.onOdak(odakli ? null : belge.id);
+                        setAcikBelge(null);
+                      }}>
+                <Ikon ad={odakli ? "close" : "chat"} />
+                {odakli ? t.focus_clear : t.focus_ask}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <aside className={`kenar${p.acik ? " acik" : ""}`}>
       <div className="kenar-baslik">{t.documents}</div>
@@ -75,99 +165,36 @@ export function Kenar(p: Props) {
         )}
       </div>
 
-      {!p.belgeler.length && <p className="kucuk-not" style={{ marginTop: ".8rem" }}>{t.no_documents}</p>}
-
-      <div style={{ marginTop: ".6rem" }}>
-        {p.belgeler.map((belge) => {
-          const ad = belge.title || belge.filename;
-          const secili = acikBelge === belge.id;
-          const odakli = p.odak === belge.id;
-          const benim = belge.owner_id === p.ben.id;
-
-          if (silinecekBelge === belge.id) {
-            return (
-              <div key={belge.id}>
-                <div className="onay">“{ad}” silinsin mi?</div>
-                <div className="onay-dugmeler">
-                  <button className="evet" onClick={() => { p.onBelgeSil(belge.id); setSilinecekBelge(null); }}>
-                    Sil
-                  </button>
-                  <button onClick={() => setSilinecekBelge(null)}>Vazgeç</button>
-                </div>
-              </div>
-            );
-          }
-
-          return (
-            <div key={belge.id}>
-              <div className="satir">
-                {/* <button> DEĞİL, role="button".
-                    Chrome bir butonun İÇİNDEKİ her kutuyu "blockify" ediyor:
-                    `-webkit-box` -> `flow-root` ve `-webkit-line-clamp` hiç
-                    çalışmıyor. ÖLÇÜLDÜ: üç satırlık belge adında kutu 38px'te
-                    kalıyor ama metin 57px; üçüncü satır "…" olmadan yarım
-                    kesilip hayalet bir satır gibi görünüyordu. Klavye davranışı
-                    elle veriliyor: Enter ve Space. */}
-                <div className={`satir-ad${odakli ? " secili" : ""}`}
-                     role="button" tabIndex={0} aria-expanded={secili} title={ad}
-                     onClick={() => setAcikBelge(secili ? null : belge.id)}
-                     onKeyDown={(e) => {
-                       if (e.key === "Enter" || e.key === " ") {
-                         e.preventDefault();
-                         setAcikBelge(secili ? null : belge.id);
-                       }
-                     }}>
-                  <span className="ad">
-                      {odakli ? "◉ " : ""}
-                    {belge.status === "processing" ? "… " : belge.status === "failed" ? "! " : ""}
-                    {ad}
-                    {belge.paylasim === "ortak" && <span className="ortak-rozet">ortak</span>}
-                  </span>
-                </div>
-                {/* Silme yalnızca SAHİBİNDE: ortak havuzdaki bir belgeyi
-                    kullanan kişi silemez, yönetici de başkasınınkini silmez. */}
-                {benim && (
-                  <button className="satir-sil" title={t.delete_doc} aria-label={t.delete_doc}
-                          onClick={() => setSilinecekBelge(belge.id)}>
-                    <Ikon ad="delete" />
-                  </button>
-                )}
-              </div>
-
-              {secili && (
-                <div className="belge-bilgi">
-                  <dl>
-                    <div><dt>{t.doc_uploaded}</dt><dd>{tarih(belge.added_at)}</dd></div>
-                    {tur(belge.summary) && (
-                      <div><dt>{t.doc_type}</dt><dd>{tur(belge.summary)}</dd></div>
-                    )}
-                    <div>
-                      <dt>{t.doc_pages}</dt>
-                      <dd>{belge.page_count}{belge.ocr_pages ? ` · ${belge.ocr_pages} ${t.ocr_pages}` : ""}</dd>
-                    </div>
-                    <div><dt>{t.doc_file}</dt><dd>{belge.filename}</dd></div>
-                  </dl>
-                  {belge.status === "failed" ? (
-                    <p className="kucuk-not">{belge.error || "işlenemedi"}</p>
-                  ) : (
-                    <button className="odak-dugme"
-                            onClick={() => {
-                              // Odak sohbete çekiliyor: sonraki sorular yalnızca bu
-                              // belgede aranıyor. Kart kapanıyor — işaret artık soru
-                              // kutusunun üstünde.
-                              p.onOdak(odakli ? null : belge.id);
-                              setAcikBelge(null);
-                            }}>
-                      <Ikon ad={odakli ? "close" : "chat"} />
-                      {odakli ? t.focus_clear : t.focus_ask}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+      {/* İKİ LİSTE, İKİ SAHİPLİK.
+          "Belgelerim" kullanıcının kendi yüklediği, yalnızca kendisinin
+          gördüğü belgeler. "Erişebileceğim belgeler" ise şirkete açık ortak
+          havuz: okunur ve soruya girer ama silinemez (sahibi yönetici).
+          Ayrım görünür olmalı — kullanıcı hangi belgenin kendine ait olduğunu,
+          hangisini silebileceğini bir bakışta bilmeli. */}
+      <div className="kenar-baslik" style={{ margin: "1.1rem 0 .5rem" }}>
+        Belgelerim{benimkiler.length ? ` (${benimkiler.length})` : ""}
       </div>
+      {benimkiler.length ? (
+        <div>{benimkiler.map(belgeSatiri)}</div>
+      ) : (
+        <p className="kucuk-not bos-liste">
+          Henüz belge yüklemediniz. Yüklediğiniz belgeleri yalnızca siz
+          görürsünüz.
+        </p>
+      )}
+
+      {ortaklar.length > 0 && (
+        <>
+          <div className="kenar-baslik" style={{ margin: "1.1rem 0 .5rem" }}>
+            Erişebileceğim belgeler ({ortaklar.length})
+          </div>
+          <div>{ortaklar.map(belgeSatiri)}</div>
+          <p className="kucuk-not bos-liste">
+            Şirkete açık belgeler. Sorularınızda kullanılır; silinmesi
+            yöneticidedir.
+          </p>
+        </>
+      )}
 
       <div className="ayrac" />
 

@@ -1143,6 +1143,9 @@ button {
 .ortak-secim input { accent-color: var(--signal); }
 /* Ortak havuzdaki belge listede işaretli: kullanıcı kendi belgesiyle şirket
    belgesini karıştırmasın (birini silebilir, diğerini silemez). */
+/* Liste altındaki açıklama: bölümün ne olduğunu bir cümleyle söylüyor. */
+.bos-liste { margin: 0.35rem 0 0; padding: 0 0.2rem; line-height: 1.6; }
+
 .ortak-rozet {
   display: inline-block;
   margin-left: 0.4rem;
