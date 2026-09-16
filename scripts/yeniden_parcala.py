@@ -3,7 +3,7 @@
     python scripts/yeniden_parcala.py
 
 Parçalama kuralı değiştikten sonra çalıştırılır. OCR ve özet tekrarlanmıyor,
-model çağrısı yok. UYGULAMA KAPALIYKEN çalıştırın: uygulama indeksi bellekte
+model çağrısı yok. SUNUCU KAPALIYKEN çalıştırın: sunucu indeksi bellekte
 tutuyor ve iki süreç aynı vektör dosyasına yazarsa satır numaraları çakışır.
 """
 from __future__ import annotations

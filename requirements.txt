@@ -1,7 +1,5 @@
 # --- çekirdek ---
-streamlit>=1.40
-# React arayüzünün konuştuğu HTTP katmanı (api/server.py). Streamlit arayüzü
-# duruyor; ikisi aynı çekirdeği ve aynı veritabanını kullanıyor.
+# Sunucu: hem HTTP API hem derlenmiş React arayüzü (api/server.py).
 fastapi>=0.115
 uvicorn[standard]>=0.30
 python-multipart>=0.0.9   # PDF yüklemesi multipart geliyor

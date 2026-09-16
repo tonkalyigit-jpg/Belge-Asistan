@@ -6,7 +6,11 @@
  */
 import type { Belge, Durum, Mesaj, SohbetOzeti, Sonuc, YuklemeSonucu } from "./types";
 
-const KOK = import.meta.env.VITE_API ?? "http://localhost:8000";
+// Varsayılan AYNI KAYNAK: derlenmiş arayüz API ile aynı sunucudan veriliyor,
+// yani adres neyse istek de oraya gidiyor (başka bir makineye kurulduğunda da
+// çalışır). Geliştirmede Vite 5173'te koşuyor ve `/api` isteklerini vite
+// yapılandırmasındaki proxy 8000'e taşıyor.
+const KOK = import.meta.env.VITE_API ?? "";
 
 async function al<T>(yol: string, secenek?: RequestInit): Promise<T> {
   const cevap = await fetch(`${KOK}${yol}`, secenek);

@@ -11,7 +11,7 @@ TARANMIŞ SAYFALARA DOKUNULMUYOR: onların metni OCR'dan geldi, PDF'te metin
 katmanı yok. Yeniden okunsalar boşalırlardı ve OCR'ı tekrarlamak model çağrısı,
 kota ve dakikalarca süre demek. Özet de yeniden üretilmiyor.
 
-UYGULAMA KAPALIYKEN çalıştırın: uygulama indeksi bellekte tutuyor ve iki süreç
+SUNUCU KAPALIYKEN çalıştırın: sunucu indeksi bellekte tutuyor ve iki süreç
 aynı vektör dosyasına yazarsa satır numaraları çakışır.
 """
 from __future__ import annotations

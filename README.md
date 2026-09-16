@@ -12,32 +12,39 @@ python3.12 -m venv .venv
 echo "GEMINI_API_KEY=..." > .env && chmod 600 .env
 ```
 
-## İki arayüz, tek çekirdek
-
-Aynı boru hattını (`core/`, `belge/`, `memory/`) iki arayüz kullanıyor.
-Hangisini açarsanız açın belgeler, sohbetler ve indeks aynı.
-
-**Streamlit** — tek komutla çalışan, Python'dan çıkmayan sürüm:
+## Çalıştırma
 
 ```bash
-.venv/bin/streamlit run app.py          # http://localhost:8501
+cd web && npm install && npm run build && cd ..        # arayüzü derle (bir kez)
+.venv/bin/python -m uvicorn api.server:app --port 8000 # http://localhost:8000
 ```
 
-**React** — HTTP API + Vite. İki süreç:
+Tek süreç: FastAPI hem HTTP API'yi hem derlenmiş React arayüzünü veriyor.
+
+Arayüz üzerinde çalışırken Vite'ın anlık yenilemesi daha rahat — o zaman iki
+süreç:
 
 ```bash
-.venv/bin/python -m uvicorn api.server:app --port 8000     # API
-cd web && npm install && npm run dev                       # http://localhost:5173
+.venv/bin/python -m uvicorn api.server:app --port 8000   # API
+cd web && npm run dev                                    # http://localhost:5173
 ```
 
-API'nin ucu `api/server.py`: belgeler, sohbetler, oy ve sayfa görüntüsü için
-JSON; cevap ile yükleme ilerlemesi için SSE (`/api/sor`, `/api/belgeler/...`).
-React tarafı `web/src/`; tasarım dili Streamlit sürümüyle aynı, metinler
-`web/src/sozluk.ts` içinde.
+Vite `/api` isteklerini 8000'e taşıyor (`web/vite.config.ts`), yani kod iki
+modda da aynı yolu kullanıyor.
 
-> İkisi AYNI ANDA açık olabilir ama belge yükleme/silme yalnızca birinden
-> yapılmalı: vektör indeksi bellekte tutulup diske yazılıyor ve iki süreç aynı
-> anda yazarsa satır numaraları çakışır.
+## Mimari
+
+Arayüz React ve **tarayıcıda** çalışıyor; boru hattı (`core/`, `belge/`,
+`memory/`), BGE-M3 ve SQLite ise **Python'da**. İkisinin arasındaki sınır
+`api/server.py`: belgeler, sohbetler, oy ve sayfa görüntüsü için JSON;
+cevap ile yükleme ilerlemesi için SSE (`/api/sor`, `/api/belgeler/...`).
+
+React tarafı `web/src/`; arayüz metinleri `web/src/sozluk.ts` içinde.
+
+> Daha önce bir Streamlit arayüzü de vardı (`app.py`). Arayüzü Python'da
+> olduğu için API'ye ihtiyaç duymuyordu, ama iki arayüzü ayakta tutmak aynı
+> veritabanına ve aynı vektör indeksine yazan iki süreç demekti: canlıda
+> "database is locked" ve bayat indeks sorunları çıkardı. Kaldırıldı.
 
 ## Akış
 

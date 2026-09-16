@@ -1,8 +1,14 @@
-"""HTTP API — React arayüzünün konuştuğu katman.
+"""Sunucu: HTTP API ve arayüzün kendisi.
 
-Streamlit uygulaması (app.py) DURUYOR ve aynı çekirdeği kullanıyor: bu dosya
-yeni bir sistem değil, `core.graph`, `belge.ingest` ve `memory` üzerine ince
-bir kabuk. İki arayüz aynı veritabanını ve aynı indeksi okuyor.
+Arayüz React ve tarayıcıda çalışıyor; `core.graph`, `belge.ingest`, BGE-M3 ve
+SQLite ise burada, Python'da. İkisinin arasındaki sınır bu dosya. (Önceki
+Streamlit arayüzü kaldırıldı: arayüzü Python'da olduğu için API'ye ihtiyacı
+yoktu, ama iki arayüzü ayakta tutmak aynı veritabanına ve aynı vektör
+indeksine yazan iki süreç demekti.)
+
+Derlenmiş React (`web/dist`) varsa aynı sunucudan veriliyor: tek komut, tek
+adres, tek süreç. Yoksa API tek başına çalışıyor ve geliştirmede Vite
+(5173) ayrı portta koşuyor.
 
 AKIŞ NEDEN SSE
 Cevap 5-80 saniye sürüyor ve kullanıcı o süre boyunca hem boru hattının hangi
@@ -13,8 +19,8 @@ kullanılmıyor.
 
 TEK SÜREÇ KURALI
 Vektör indeksi bellekte tutuluyor ve diske yazılıyor; iki süreç aynı anda
-yazarsa satır numaraları çakışır (yaşandı). API ile Streamlit aynı anda
-AÇIK OLABİLİR ama ikisinden yalnızca biri belge yüklemeli/silmeli.
+yazarsa satır numaraları çakışır (yaşandı). Aynı anda ikinci bir sunucu
+(ikinci bir uvicorn, bir script) belge yüklememeli.
 """
 from __future__ import annotations
 
@@ -31,7 +37,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 import config
 from belge import ingest
@@ -341,3 +348,22 @@ async def oy(istek: Request) -> dict:
     if sohbet_id is not None and sira is not None:
         conversations.set_vote(int(sohbet_id), int(sira), etiket)
     return {"kaydedildi": True}
+
+
+# --- arayüz ---------------------------------------------------------------
+#
+# Bu blok dosyanın SONUNDA: FastAPI yolları tanımlanma sırasına göre
+# eşleştiriyor ve kökü (`/`) burada bağlıyoruz. Yukarıda kalsaydı `/api/...`
+# istekleri de statik dosya arayışına düşerdi.
+_DAGITIM = Path(__file__).resolve().parent.parent / "web" / "dist"
+
+if _DAGITIM.exists():
+    app.mount("/assets", StaticFiles(directory=_DAGITIM / "assets"), name="assets")
+
+    @app.get("/{yol:path}")
+    def arayuz(yol: str) -> Response:
+        """Derlenmiş React. Bilinmeyen yol index.html'e düşüyor (SPA)."""
+        dosya = _DAGITIM / yol
+        if yol and dosya.is_file():
+            return FileResponse(dosya)
+        return FileResponse(_DAGITIM / "index.html")
