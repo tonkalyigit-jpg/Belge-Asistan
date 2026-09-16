@@ -363,10 +363,10 @@ def sohbet_ac(istek: Request) -> dict:
     sohbetle aynı şey.
     """
     kullanici = kim(istek)
-    for sohbet in conversations.list_all(limit=5, owner_id=kullanici["id"]):
-        if sohbet["n"] == 0:
-            return {"id": sohbet["id"]}
-    return {"id": conversations.create(owner_id=kullanici["id"])}
+    # Listede boş sohbet görünmüyor (mesajsız kayıt açılmamış sayılıyor), bu
+    # yüzden doğrudan tabloya bakılıyor: varsa o yeniden kullanılıyor.
+    bos = conversations.bos_sohbet(kullanici["id"])
+    return {"id": bos if bos is not None else conversations.create(owner_id=kullanici["id"])}
 
 
 def _sohbetim(sohbet_id: int, kullanici: dict) -> None:

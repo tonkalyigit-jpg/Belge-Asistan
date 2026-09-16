@@ -28,6 +28,23 @@ def create(title: str = "", owner_id: int | None = None) -> int:
     return int(cur.lastrowid)
 
 
+def bos_sohbet(owner_id: int) -> int | None:
+    """Kullanıcının mesajsız sohbeti varsa kimliği.
+
+    Her "Yeni sohbet" tıklaması yeni kayıt açsaydı tabloda mesajsız kayıtlar
+    birikirdi (canlıda dokuz tane birikti). Mesajsız bir sohbet, açılmamış bir
+    sohbetle aynı şey.
+    """
+    row = db.connect().execute(
+        """SELECT c.id FROM conversations c
+           WHERE c.owner_id = ?
+             AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id)
+           ORDER BY c.id DESC LIMIT 1""",
+        (owner_id,),
+    ).fetchone()
+    return None if row is None else row["id"]
+
+
 def sahibi(conversation_id: int) -> int | None:
     row = db.connect().execute(
         "SELECT owner_id FROM conversations WHERE id = ?", (conversation_id,)
@@ -53,7 +70,7 @@ def list_all(limit: int = 60, owner_id: int | None = None) -> list[dict]:
         rows = db.connect().execute(
             """SELECT c.id, c.title, c.updated_at,
                       (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS n
-               FROM conversations c WHERE c.owner_id = ?
+               FROM conversations c WHERE c.owner_id = ? AND n > 0
                ORDER BY c.updated_at DESC LIMIT ?""",
             (owner_id, limit),
         ).fetchall()

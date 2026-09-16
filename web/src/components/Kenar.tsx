@@ -10,6 +10,9 @@ import { Ikon, Katlanir } from "./Ogeler";
 
 const t = T.tr;   // sayfa çatısı hep Türkçe
 
+// Kenar çubuğunda ilk anda görünen sohbet sayısı.
+const GORUNEN_SOHBET = 6;
+
 interface Props {
   belgeler: Belge[];
   sohbetler: SohbetOzeti[];
@@ -23,10 +26,9 @@ interface Props {
   onSohbetAc: (id: number) => void;
   onSohbetSil: (id: number) => void;
   onYeniSohbet: () => void;
+  bosSohbet: boolean;
   acik: boolean;
   ben: Kullanici;
-  onCikis: () => void;
-  onYonetim: () => void;
 }
 
 export function Kenar(p: Props) {
@@ -35,6 +37,7 @@ export function Kenar(p: Props) {
   const [silinecekSohbet, setSilinecekSohbet] = useState<number | null>(null);
   const [uzerinde, setUzerinde] = useState(false);
   const [ortak, setOrtak] = useState(false);
+  const [hepsiniGoster, setHepsiniGoster] = useState(false);
   const girdi = useRef<HTMLInputElement>(null);
   const yonetici = p.ben.rol === "admin";
 
@@ -168,14 +171,21 @@ export function Kenar(p: Props) {
 
       <div className="ayrac" />
 
-      <button className="yeni-sohbet" onClick={p.onYeniSohbet}>
+      {/* Açık sohbet zaten boşken yeni açmanın karşılığı yok: ikinci bir boş
+          kayıt listeye "Yeni sohbet" satırı ekliyor ve hiçbir şey değişmiyor. */}
+      <button className="yeni-sohbet" onClick={p.onYeniSohbet} disabled={p.bosSohbet}
+              title={p.bosSohbet ? "Zaten boş bir sohbettesiniz" : undefined}>
         <Ikon ad="add" /> Yeni sohbet
       </button>
 
       {p.sohbetler.length > 0 && (
         <>
           <div className="kenar-baslik" style={{ margin: "1rem 0 .5rem" }}>Sohbetler</div>
-          {p.sohbetler.map((sohbet) => {
+          {/* LİSTE KISA BAŞLIYOR. Otuz sohbet biriktiğinde kenar çubuğu
+              sayfalarca uzuyor ve altındaki her şey (maliyet, modeller)
+              görünmez oluyordu. İlkler zaten en son konuşulanlar; gerisi
+              isteyene bir tıkla açılıyor. */}
+          {(hepsiniGoster ? p.sohbetler : p.sohbetler.slice(0, GORUNEN_SOHBET)).map((sohbet) => {
             if (silinecekSohbet === sohbet.id) {
               return (
                 <div key={sohbet.id}>
@@ -212,10 +222,18 @@ export function Kenar(p: Props) {
               </div>
             );
           })}
+          {p.sohbetler.length > GORUNEN_SOHBET && (
+            <button className="daha-fazla"
+                    onClick={() => setHepsiniGoster((a) => !a)}>
+              <Ikon ad={hepsiniGoster ? "expand_less" : "expand_more"} />
+              {hepsiniGoster
+                ? "Daha az göster"
+                : `Tümünü göster (${p.sohbetler.length})`}
+            </button>
+          )}
         </>
       )}
 
-      <div className="ayrac" />
 
       {/* Kullanım verileri KATLANMIŞ: sistemi geliştirirken gerekli, soru soran
           kullanıcı için gürültü. */}
@@ -242,28 +260,6 @@ export function Kenar(p: Props) {
           ))}
         </>
       } />
-
-      <div className="ayrac" />
-
-      {/* Kim olduğun her zaman görünür: paylaşılan bir makinede "hangi hesapla
-          açığım" sorusu belge yüklemeden önce cevaplanmalı. */}
-      <div className="hesap">
-        <div className="hesap-ad">
-          <Ikon ad="account_circle" />
-          <span>
-            <strong>{p.ben.ad}</strong>
-            <span className="hesap-rol">{yonetici ? "yönetici" : "kullanıcı"}</span>
-          </span>
-        </div>
-        {yonetici && (
-          <button className="hesap-dugme" onClick={p.onYonetim}>
-            <Ikon ad="settings" /> Yönetim
-          </button>
-        )}
-        <button className="hesap-dugme" onClick={p.onCikis}>
-          <Ikon ad="logout" /> Çıkış
-        </button>
-      </div>
     </aside>
   );
 }

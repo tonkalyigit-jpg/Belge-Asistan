@@ -1,4 +1,4 @@
-/** Yönetim paneli — hesaplar ve kullanım.
+/** Ayarlar — hesaplar ve kullanım (yalnızca yönetici).
  *
  *  BURADA BELGE İÇERİĞİ VE SOHBET YOK, olmayacak da: seçilen yetki modelinde
  *  yönetici hesapları yönetiyor ve "kim ne kadar kullandı" görüyor; "kim ne
@@ -52,7 +52,7 @@ export function Yonetim({ ben, onKapat }: { ben: Kullanici; onKapat: () => void 
   return (
     <div className="yonetim">
       <div className="yonetim-bas">
-        <h2>Yönetim</h2>
+        <h2>Ayarlar</h2>
         <button className="ikon-dugme" onClick={onKapat} title="Kapat" aria-label="Kapat">
           <Ikon ad="close" />
         </button>

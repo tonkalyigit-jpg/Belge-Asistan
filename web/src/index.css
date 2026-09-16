@@ -140,6 +140,7 @@ button {
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;      /* sağ üstteki hesap menüsünün çapası */
 }
 
 /* Sohbet akışı: tek kaydırılabilir alan. `overflow-anchor` kapalı — tarayıcı
@@ -159,6 +160,8 @@ button {
   max-width: 46rem;
   padding: 2.2rem 1.25rem 0;
 }
+/* Başlık satırı hesap hapının altına girmesin. */
+.sutun .manset { padding-right: 9rem; }
 
 /* Soru kutusu akışın dışında, hep altta. Üstündeki yumuşak geçiş metnin
    kutuya doğru silinerek girmesini sağlıyor; sert bir çizgi sayfayı ikiye
@@ -359,7 +362,9 @@ button {
 }
 .yeni-sohbet:hover { background: var(--panel); }
 
-.katlanir { border-top: 1px solid var(--line); }
+/* ÜST ÇİZGİ YOK. Blokların üstünde zaten bir `.ayrac` var; ikisi birlikte
+   iki piksel arayla iki çizgi çiziyor ve kenar çubuğu çatlak görünüyordu. */
+.katlanir + .katlanir { border-top: 1px solid var(--line); }
 .katlanir > summary {
   list-style: none;
   cursor: pointer;
@@ -1046,38 +1051,83 @@ button {
   outline-offset: 2px;
 }
 
-/* --- kenar çubuğu: hesap ------------------------------------------- */
-.hesap { display: flex; flex-direction: column; gap: 0.3rem; }
-.hesap-ad {
+/* --- sağ üst hesap menüsü ------------------------------------------ */
+/* Sayfanın üstünde, akışın dışında: sohbet ne kadar uzarsa uzasın yeri
+   değişmiyor. Kenar çubuğunun dibindeyken liste uzadıkça kayboluyordu. */
+.hesap-kose { position: absolute; top: 0.9rem; right: 1.25rem; z-index: 25; }
+.hesap-hap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 36px;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  max-width: 14rem;
+}
+.hesap-hap:hover { color: var(--paper); border-color: #39414d; }
+.hesap-hap-ad { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hesap-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  min-width: 13rem;
+  padding: 0.3rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.hesap-menu-bas {
+  padding: 0.5rem 0.6rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--paper);
+}
+.hesap-menu-bas span {
+  display: block;
+  font-size: 0.62rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+.hesap-menu button {
   display: flex;
   align-items: center;
   gap: 0.45rem;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 0.6rem;
+  border-radius: 6px;
   font-family: var(--mono);
   font-size: 0.72rem;
   color: var(--paper);
-  padding: 0.2rem 0.2rem 0.5rem;
 }
-.hesap-ad strong { display: block; font-weight: 500; }
-.hesap-rol {
-  display: block;
-  font-size: 0.62rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.hesap-dugme {
+.hesap-menu button:hover { background: var(--panel-2); }
+
+/* Sohbet listesini açan düğme: liste kısa başlıyor, isteyen uzatıyor. */
+.daha-fazla {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   width: 100%;
-  min-height: 40px;
-  padding: 0.35rem 0.5rem;
+  min-height: 36px;
+  padding: 0.3rem 0.5rem;
+  margin-top: 0.2rem;
   border-radius: 4px;
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   color: var(--muted);
 }
-.hesap-dugme:hover { background: var(--panel); color: var(--paper); }
+.daha-fazla:hover { background: var(--panel); color: var(--paper); }
+
+.yeni-sohbet:disabled { color: var(--muted); cursor: not-allowed; }
+.yeni-sohbet:disabled:hover { background: none; }
 
 .ortak-secim {
   display: flex;

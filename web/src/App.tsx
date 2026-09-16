@@ -11,6 +11,7 @@ import type { Belge, Durum, Kullanici, Mesaj, SohbetOzeti, Sonuc } from "./types
 import { ADIM, T, YUKLEME_ASAMA } from "./sozluk";
 import { Alt } from "./components/Alt";
 import { Giris } from "./components/Giris";
+import { Hesap } from "./components/Hesap";
 import { Yonetim } from "./components/Yonetim";
 import { Eylemler } from "./components/Eylemler";
 import { Iz } from "./components/Iz";
@@ -286,11 +287,12 @@ export default function App() {
         onYeniSohbet={yeniSohbet}
         acik={kenarAcik}
         ben={ben}
-        onCikis={cikis}
-        onYonetim={() => { setYonetimAcik(true); setKenarAcik(false); }}
+        bosSohbet={!mesajlar.length && !calisiyor}
       />
 
       <main className="govde">
+        <Hesap ben={ben} onCikis={cikis}
+               onAyarlar={() => { setYonetimAcik(true); setKenarAcik(false); }} />
         {yonetimAcik && ben.rol === "admin" ? (
           <div className="akis">
             <div className="sutun">
