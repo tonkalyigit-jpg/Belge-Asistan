@@ -149,8 +149,19 @@ def connect() -> sqlite3.Connection:
     if conn is None:
         path = config.abs_path("paths.db")
         path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(path), check_same_thread=False)
+        # `timeout`: SQLite yazma kilidi başkasındayken HATA VERMEK yerine
+        # beklesin. İki arayüz (Streamlit ve API) aynı dosyayı kullanıyor ve
+        # yükleme/özet yazarken kilidi saniyelerce tutabiliyor. Varsayılan 5 sn
+        # yetmedi: "database is locked" canlıda altı kez düştü, sohbet
+        # açılamadı ve arayüz hata verdi.
+        conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
         conn.row_factory = sqlite3.Row
+        # PRAGMA'lar BAĞLANTI BAŞINA: `journal_mode` dosyaya yazılıp kalıcı
+        # oluyor ama `busy_timeout` ve `synchronous` her bağlantıda yeniden
+        # ayarlanmak zorunda — şema betiğinde olmaları yetmiyor.
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA journal_mode=WAL")    # okuyucu yazarı bloklamasın
+        conn.execute("PRAGMA synchronous=NORMAL")  # WAL ile güvenli, belirgin hızlı
         _pre_migrate(conn)
         conn.executescript(SCHEMA)
         conn.commit()

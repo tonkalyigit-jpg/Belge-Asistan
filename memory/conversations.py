@@ -27,6 +27,14 @@ def create(title: str = "") -> int:
     return int(cur.lastrowid)
 
 
+def var_mi(conversation_id: int) -> bool:
+    """Sohbet duruyor mu — silinmiş bir kimliğe mesaj yazmayı önlemek için."""
+    row = db.connect().execute(
+        "SELECT 1 FROM conversations WHERE id = ?", (conversation_id,)
+    ).fetchone()
+    return row is not None
+
+
 def list_all(limit: int = 60) -> list[dict]:
     """En son konuşulan üstte."""
     rows = db.connect().execute(

@@ -100,6 +100,7 @@ class VectorStore:
         self._df: dict[str, int] = {}
         self._avg_len: float = 0.0
         self._loaded = False
+        self._damga = 0            # indeks dosyasının son görülen zaman damgası
 
     # ---------- kalıcılık ----------
 
@@ -111,9 +112,20 @@ class VectorStore:
 
     def load(self) -> "VectorStore":
         with _lock:
-            if self._loaded:
-                return self
             path = self._vectors_path
+            # BAŞKA BİR SÜREÇ İNDEKSİ DEĞİŞTİRDİ Mİ?
+            #
+            # İki arayüz (Streamlit ve React/API) aynı indeksi kullanıyor.
+            # Birinde belge yüklenince diğerinin bellekteki kopyası eskiyor ve
+            # o arayüz yeni belgeyi HİÇ göremiyor — sessiz bir "belgede yok"
+            # cevabı, yani hatanın en kötü türü. Vektör dosyasının değişme
+            # zamanı, ucuz bir tazelik işareti.
+            damga = path.stat().st_mtime_ns if path.exists() else 0
+            if self._loaded and damga == self._damga:
+                return self
+            if self._loaded:
+                self._vectors = np.zeros((0, self.dim), dtype=np.float32)
+            self._damga = damga
             if path.exists():
                 arr = np.load(path)
                 if arr.ndim == 2 and arr.shape[1] == self.dim:
@@ -138,6 +150,10 @@ class VectorStore:
 
     def _persist_vectors(self) -> None:
         np.save(self._vectors_path, self._vectors)
+        # Kendi yazdığımız damgayı kaydediyoruz; yoksa bir sonraki `load`
+        # kendi değişikliğimizi "başkası yazdı" sanıp indeksi yeniden kurardı.
+        path = self._vectors_path
+        self._damga = path.stat().st_mtime_ns if path.exists() else 0
 
     def _rebuild_bm25_stats(self) -> None:
         df: dict[str, int] = {}

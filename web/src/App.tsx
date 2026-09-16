@@ -62,8 +62,14 @@ export default function App() {
     setSohbetId(id);
     setOdak(null);      // odak sohbete ait bir karar, başka sohbete taşınmamalı
     setKenarAcik(false);
-    const veri = await api.sohbet(id);
-    setMesajlar(veri.mesajlar);
+    try {
+      const veri = await api.sohbet(id);
+      setMesajlar(veri.mesajlar);
+    } catch (e) {
+      // Sohbet başka bir sekmede silinmiş olabilir: boş aç ve söyle.
+      setMesajlar([]);
+      setHata(`Sohbet açılamadı: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }, []);
 
   useEffect(() => {
@@ -96,13 +102,27 @@ export default function App() {
     dibeYakin.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   }
 
+  /** API çağrısını sarar: hata sessizce yutulmasın, ekranda görünsün.
+   *  Sunucu düşerse ya da bir istek reddedilirse arayüz "hiçbir şey olmadı"
+   *  gibi davranıyordu; kullanıcı tıklayıp bekliyordu. */
+  async function guvenle<T>(is: Promise<T>, nerede: string): Promise<T | null> {
+    try {
+      return await is;
+    } catch (e) {
+      setHata(`${nerede}: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
+  }
+
   async function yeniSohbet() {
     setOdak(null);
     if (!mesajlar.length && sohbetId) return;   // boş sohbet varken yenisi gereksiz
-    const { id } = await api.sohbetAc();
-    setSohbetId(id);
+    const yeni = await guvenle(api.sohbetAc(), "Sohbet açılamadı");
+    if (!yeni) return;
+    setSohbetId(yeni.id);
     setMesajlar([]);
-    setSohbetler(await api.sohbetler());
+    const liste = await guvenle(api.sohbetler(), "Sohbet listesi alınamadı");
+    if (liste) setSohbetler(liste);
   }
 
   async function dosyaYukle(dosyalar: FileList) {
@@ -144,14 +164,14 @@ export default function App() {
   }
 
   async function belgeSil(id: number) {
-    await api.belgeSil(id);
+    if (!(await guvenle(api.belgeSil(id), "Belge silinemedi"))) return;
     if (odak === id) setOdak(null);
-    await yenile();
+    await guvenle(yenile(), "Liste yenilenemedi");
   }
 
   async function sohbetSil(id: number) {
-    await api.sohbetSil(id);
-    const kalan = await api.sohbetler();
+    if (!(await guvenle(api.sohbetSil(id), "Sohbet silinemedi"))) return;
+    const kalan = (await guvenle(api.sohbetler(), "Sohbet listesi alınamadı")) ?? [];
     setSohbetler(kalan);
     if (id === sohbetId) {
       if (kalan.length) await acSohbet(kalan[0].id);
@@ -206,10 +226,10 @@ export default function App() {
   async function oyVer(sira: number, yon: 1 | -1, etiket: string) {
     const mesaj = mesajlar[sira];
     const sonuc = (mesaj.result ?? {}) as Sonuc;
-    await api.oy({
+    await guvenle(api.oy({
       soru: sonuc.query ?? "", yon, dil: sonuc.lang ?? "tr",
       kategori: sonuc.category, sohbet_id: sohbetId, sira, etiket,
-    });
+    }), "Oy kaydedilemedi");
     setMesajlar((eski) => eski.map((m, i) => (i === sira ? { ...m, voted: etiket } : m)));
   }
 

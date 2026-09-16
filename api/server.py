@@ -242,6 +242,11 @@ async def sor(istek: Request) -> StreamingResponse:
     yeniden = bool(govde.get("yeniden"))
     if not soru:
         raise HTTPException(400, "Soru boş")
+    # SOHBET HÂLÂ VAR MI? Tarayıcı elindeki kimliği gönderiyor ve o sohbet bu
+    # arada silinmiş olabilir (başka sekme, Streamlit arayüzü, temizlik).
+    # Yoksa mesaj eklemek FOREIGN KEY hatasıyla düşüyordu — canlıda yaşandı.
+    if sohbet_id is not None and not conversations.var_mi(int(sohbet_id)):
+        sohbet_id = None
     if sohbet_id is None:
         sohbet_id = conversations.create()
 

@@ -68,3 +68,28 @@ def test_belge_basina_tavan(fake_embedder):
     store, a, b = _kur(fake_embedder)
     hits = store.search("sözleşme madde", top_k=10, max_per_document=1)
     assert len([h for h in hits if h.document_id == a]) <= 1
+
+
+def test_baska_surec_indeksi_degistirince_yeniden_yukleniyor(fake_embedder, tmp_path):
+    """İki arayüz aynı indeksi kullanıyor; biri belge eklerse diğeri görmeli.
+
+    Eskiden bellekteki kopya bir kez yüklenip orada kalıyordu: React'ten
+    yüklenen belge Streamlit'te hiç görünmüyor, soru "belgede yok" cevabı
+    alıyordu — sessiz ve yanlış.
+    """
+    from belge import store as store_mod
+    from belge.pdf import Chunk
+
+    s = store_mod.get_store()
+    s.load()
+    onceki = s.size()
+
+    # İkinci bir mağaza nesnesi = ikinci süreç benzetimi.
+    belge_id = _belge("Yeni belge")
+    ikinci = store_mod.VectorStore()
+    ikinci.load()
+    ikinci.add_document(belge_id, "Yeni belge", "özet",
+                        [Chunk(0, "", "gecikme cezası binde üç", 1, 1)])
+
+    s.load()                      # tazelik kontrolü burada devreye giriyor
+    assert s.size() > onceki
