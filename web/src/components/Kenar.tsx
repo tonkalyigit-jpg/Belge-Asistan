@@ -83,13 +83,28 @@ export function Kenar(p: Props) {
           return (
             <div key={belge.id}>
               <div className="satir">
-                <button className={`satir-ad${odakli ? " secili" : ""}`}
-                        aria-expanded={secili}
-                        onClick={() => setAcikBelge(secili ? null : belge.id)}>
-                  {odakli ? "◉ " : ""}
-                  {belge.status === "processing" ? "… " : belge.status === "failed" ? "! " : ""}
-                  {ad}
-                </button>
+                {/* <button> DEĞİL, role="button".
+                    Chrome bir butonun İÇİNDEKİ her kutuyu "blockify" ediyor:
+                    `-webkit-box` -> `flow-root` ve `-webkit-line-clamp` hiç
+                    çalışmıyor. ÖLÇÜLDÜ: üç satırlık belge adında kutu 38px'te
+                    kalıyor ama metin 57px; üçüncü satır "…" olmadan yarım
+                    kesilip hayalet bir satır gibi görünüyordu. Klavye davranışı
+                    elle veriliyor: Enter ve Space. */}
+                <div className={`satir-ad${odakli ? " secili" : ""}`}
+                     role="button" tabIndex={0} aria-expanded={secili} title={ad}
+                     onClick={() => setAcikBelge(secili ? null : belge.id)}
+                     onKeyDown={(e) => {
+                       if (e.key === "Enter" || e.key === " ") {
+                         e.preventDefault();
+                         setAcikBelge(secili ? null : belge.id);
+                       }
+                     }}>
+                  <span className="ad">
+                    {odakli ? "◉ " : ""}
+                    {belge.status === "processing" ? "… " : belge.status === "failed" ? "! " : ""}
+                    {ad}
+                  </span>
+                </div>
                 <button className="satir-sil" title={t.delete_doc} aria-label={t.delete_doc}
                         onClick={() => setSilinecekBelge(belge.id)}>
                   <Ikon ad="delete" />
@@ -156,10 +171,20 @@ export function Kenar(p: Props) {
             }
             return (
               <div className="satir" key={sohbet.id}>
-                <button className={`satir-ad${sohbet.id === p.acikSohbet ? " secili" : ""}`}
-                        onClick={() => p.onSohbetAc(sohbet.id)}>
-                  {sohbet.id === p.acikSohbet ? "▸ " : ""}{sohbet.title}
-                </button>
+                <div className={`satir-ad${sohbet.id === p.acikSohbet ? " secili" : ""}`}
+                     role="button" tabIndex={0} title={sohbet.title}
+                     aria-current={sohbet.id === p.acikSohbet ? "true" : undefined}
+                     onClick={() => p.onSohbetAc(sohbet.id)}
+                     onKeyDown={(e) => {
+                       if (e.key === "Enter" || e.key === " ") {
+                         e.preventDefault();
+                         p.onSohbetAc(sohbet.id);
+                       }
+                     }}>
+                  <span className="ad">
+                    {sohbet.id === p.acikSohbet ? "▸ " : ""}{sohbet.title}
+                  </span>
+                </div>
                 <button className="satir-sil" title="Sohbeti sil" aria-label="Sohbeti sil"
                         onClick={() => setSilinecekSohbet(sohbet.id)}>
                   <Ikon ad="delete" />

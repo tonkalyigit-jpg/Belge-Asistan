@@ -23,7 +23,7 @@
   --serif: "Newsreader", Georgia, serif;
   --display: "Fraunces", Georgia, serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
-  --kenar: 19rem; /* kenar çubuğu genişliği */
+  --kenar: 18.75rem; /* 300px — Streamlit sürümünün kenar çubuğuyla aynı */
   color-scheme: dark;
 }
 
@@ -47,7 +47,35 @@ html, body, #root {
 body {
   font-family: var(--serif);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Fraunces ve Newsreader optik boyutlu: aynı harf 11px'te ve 33px'te farklı
+     çiziliyor. `auto` tarayıcının opsz eksenini punto ile eşleştirmesini
+     sağlıyor — kapalıyken başlık kalın ve sıkışık, gövde ise cılız duruyordu. */
+  font-optical-sizing: auto;
+  text-rendering: optimizeLegibility;
 }
+
+/* Telemetri sayıları hizalansın: rozetlerde ve iz panelinde alt alta gelen
+   süreler/maliyetler farklı genişlikte rakamlarla zıplıyordu. */
+.rozet, .iadim-sayi, .olcum dd, .psure, .kaynak-meta {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection { background: rgba(233, 168, 92, 0.28); color: #fff8ec; }
+
+/* Koyu zeminde varsayılan kaydırma çubuğu parlak bir şerit gibi duruyor. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2c333d transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: #2c333d;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover { background: #3a424f; }
+*::-webkit-scrollbar-track { background: transparent; }
 
 button, [role="button"], a, summary { touch-action: manipulation; }
 
@@ -86,7 +114,16 @@ button {
 
 /* --- yerleşim ---------------------------------------------------- */
 
-.kabuk { display: flex; min-height: 100%; }
+/* UYGULAMA KABUĞU: iki BAĞIMSIZ kaydırma alanı (kenar çubuğu ve sohbet),
+   soru kutusu ise her zaman pencerenin altında.
+
+   Önce sayfanın kendisi kayıyordu ve soru kutusu `position: sticky` ile
+   dibe tutunuyordu. Sohbet KISAYSA (yeni sohbet, tek mesaj) sayfa ekrandan
+   kısa kalıyor, yapışacak bir dip olmuyor ve kutu içeriğin hemen altına,
+   ekranın ortasına çıkıyordu — kullanıcının gördüğü "yeni sohbette chat
+   yukarı çıkıyor" hatası buydu. Yükseklik kabuğa verilince kutu akışın
+   dışına çıkıyor ve konumu içerik uzunluğundan bağımsız oluyor. */
+.kabuk { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
 
 .kenar {
   width: var(--kenar);
@@ -94,9 +131,7 @@ button {
   border-right: 1px solid var(--line);
   padding: 1.1rem 1rem 2rem;
   overflow-y: auto;
-  height: 100vh;
-  position: sticky;
-  top: 0;
+  height: 100%;
 }
 
 .govde {
@@ -104,7 +139,19 @@ button {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  height: 100%;
+}
+
+/* Sohbet akışı: tek kaydırılabilir alan. `overflow-anchor` kapalı — tarayıcı
+   içerik büyürken görünümü sabit tutmaya çalışıyor ve akış sırasında metin
+   saniyede onlarca kez büyüdüğü için bu düzeltme titreme olarak görünüyor. */
+.akis {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  justify-content: center;
+  overflow-anchor: none;
 }
 
 .sutun {
@@ -113,16 +160,16 @@ button {
   padding: 2.2rem 1.25rem 0;
 }
 
-/* Soru kutusu altta sabit; arkası mürekkep, üstü yumuşak geçiş: metin
-   kutunun altına doğru silinerek giriyor. Sert bir çizgi sayfayı ikiye
+/* Soru kutusu akışın dışında, hep altta. Üstündeki yumuşak geçiş metnin
+   kutuya doğru silinerek girmesini sağlıyor; sert bir çizgi sayfayı ikiye
    bölüp sohbetin sürekliliğini kesiyordu. */
 .alt {
-  position: sticky;
-  bottom: 0;
+  flex: 0 0 auto;
   width: 100%;
   max-width: 46rem;
-  padding: 0 1.25rem 1rem;
-  background: linear-gradient(180deg, transparent 0%, var(--ink) 18%, var(--ink) 100%);
+  margin: 0 auto;
+  padding: 0.6rem 1.25rem 1rem;
+  background: linear-gradient(180deg, transparent 0%, var(--ink) 22%, var(--ink) 100%);
 }
 
 /* --- kenar çubuğu ------------------------------------------------ */
@@ -178,6 +225,7 @@ button {
   display: flex;
   align-items: center;
   gap: 0.15rem;
+  margin-bottom: 2px;   /* liste taranabilir olsun: satırlar birbirine yapışmasın */
 }
 
 /* Liste tarama içindir: göz aşağı inerken başlıkları okur, eyleme yalnızca
@@ -188,17 +236,34 @@ button {
   min-width: 0;
   text-align: left;
   font-family: var(--mono);
-  font-size: 0.78rem;
+  /* 0.78rem DEĞİL: Streamlit sürümünde bu satırlar 14px çiziliyor (buton
+     stilini içteki paragraf eziyor) ve React'te 12.5px kalınca yan yana
+     konduğunda tipografi değişmiş gibi görünüyordu. ÖLÇÜLDÜ: 14px / 1.35. */
+  font-size: 0.875rem;
   line-height: 1.35;
   color: var(--paper);
   padding: 0.45rem 0.5rem;
   border-radius: 4px;
   min-height: 40px;
+  /* `flex` DEĞİL: flex öğesi olan bir kutunun display'i "blockify" ediliyor ve
+     `-webkit-box` -> `flow-root`a dönüşüyor; kırpma yine çalışmıyordu. */
+  display: block;
+  overflow: hidden;
+}
+/* KIRPMA BUTONDA DEĞİL İÇİNDEKİ SPAN'DA. `-webkit-line-clamp` için öğenin
+   `display: -webkit-box` olması gerekiyor; <button> üzerinde Chrome bunu
+   `flow-root`a çeviriyor ve kural hiç uygulanmıyordu. ÖLÇÜLDÜ: üç satırlık
+   bir belge adında kutu 52px'te kalıyor ama üçüncü satır "…" olmadan yarım
+   kesiliyordu — hayalet bir satır gibi görünüyor. */
+.satir-ad { cursor: pointer; }
+.satir-ad .ad {
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
+  width: 100%;
 }
 .satir-ad:hover { background: var(--panel); }
 .satir-ad.secili { color: var(--signal); }
@@ -287,8 +352,8 @@ button {
   padding: 0.4rem 0.5rem;
   min-height: 40px;
   font-family: var(--mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
+  font-size: 0.875rem;        /* belge/sohbet satırlarıyla aynı kayıt */
+  letter-spacing: 0.02em;
   color: var(--signal);
   border-radius: 4px;
 }
@@ -370,15 +435,19 @@ button {
 .manset p {
   font-family: var(--mono);
   font-size: 0.7rem;
+  line-height: 1.6;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
   margin: 0;
 }
 
+.hata-satiri { color: var(--warn); }
+
 /* --- boş durum --------------------------------------------------- */
 
 .bos {
+  margin-top: 0.4rem;
   border: 1px solid var(--line);
   border-radius: 3px;
   padding: 1.4rem 1.5rem;
@@ -455,6 +524,11 @@ button {
 .mesaj-govde { min-width: 0; flex: 1 1 auto; }
 
 /* --- cevap gövdesi: okumak için ---------------------------------- */
+
+/* Kabın ilk ve son öğesinin dış boşluğu, mesajın kendi boşluğuyla üst üste
+   binip hizayı bozuyordu. */
+.md > *:first-child { margin-top: 0; }
+.md > *:last-child { margin-bottom: 0; }
 
 .md p, .md li {
   font-family: var(--serif);
@@ -810,7 +884,7 @@ button {
   color: var(--paper);
   font-family: var(--serif);
   font-size: 1rem;
-  line-height: 1.5;
+  line-height: 1.4;
   max-height: 9rem;
   padding: 0.35rem 0;
 }

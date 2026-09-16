@@ -60,6 +60,9 @@ export function Kaynaklar({ sonuc }: { sonuc: Sonuc }) {
                         key={no}
                         className={acik ? "acik" : ""}
                         title={t.show_page}
+                        // İkon + "s. 3" görünür ad veriyor ama panel kapalıyken
+                        // ekran okuyucuya hiçbir şey ulaşmıyor; açık ad şart.
+                        aria-label={`${t.show_page} — ${t.page_word} ${no}`}
                         aria-expanded={acik}
                         onClick={() => setAcikSayfa(acik ? null : [atif.document_id, no])}
                       >

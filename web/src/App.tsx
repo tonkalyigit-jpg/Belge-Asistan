@@ -44,7 +44,10 @@ export default function App() {
   const [canliAdim, setCanliAdim] = useState<string | null>(null);
   const [akanMetin, setAkanMetin] = useState("");
   const [gecenSure, setGecenSure] = useState(0);
-  const dip = useRef<HTMLDivElement>(null);
+  const akis = useRef<HTMLDivElement>(null);
+  // Kullanıcı yukarı kaydırıp eski mesajları okuyorsa akan metin onu aşağı
+  // ÇEKMEMELİ. Her akış turunda dibe yakın olup olmadığına bakılıyor.
+  const dibeYakin = useRef(true);
 
   const yenile = useCallback(async () => {
     const [b, s, d] = await Promise.all([api.belgeler(), api.sohbetler(), api.durum()]);
@@ -55,6 +58,7 @@ export default function App() {
   }, []);
 
   const acSohbet = useCallback(async (id: number) => {
+    dibeYakin.current = true;
     setSohbetId(id);
     setOdak(null);      // odak sohbete ait bir karar, başka sohbete taşınmamalı
     setKenarAcik(false);
@@ -78,10 +82,19 @@ export default function App() {
   }, [calisiyor]);
 
   // Yeni mesaj ya da akan metin geldiğinde dibe in: cevap üretimi 5-80 saniye
-  // sürüyor ve kullanıcı o süre boyunca kendi sorusunu göremiyordu.
+  // sürüyor ve kullanıcı o süre boyunca kendi sorusunu göremiyordu. Sayfanın
+  // kendisi değil SOHBET ALANI kaydırılıyor; soru kutusu akışın dışında.
   useEffect(() => {
-    dip.current?.scrollIntoView({ behavior: "auto", block: "end" });
-  }, [mesajlar.length, akanMetin, calisiyor]);
+    const el = akis.current;
+    if (!el || !dibeYakin.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [mesajlar, akanMetin, calisiyor, canliAdim]);
+
+  function kaydirmaIzle() {
+    const el = akis.current;
+    if (!el) return;
+    dibeYakin.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }
 
   async function yeniSohbet() {
     setOdak(null);
@@ -228,7 +241,8 @@ export default function App() {
       />
 
       <main className="govde">
-        <div className="sutun">
+        <div className="akis" ref={akis} onScroll={kaydirmaIzle}>
+        <div className="sutun" role="log" aria-live="polite" aria-busy={calisiyor}>
           <div className="manset">
             <h1>
               <img src="/orion-logo.png" alt="Orion Innovation" />
@@ -308,7 +322,7 @@ export default function App() {
           {calisiyor && (
             <div className="mesaj">
               <img className="avatar" src="/avatar-assistant.png" alt="" />
-              <div className="mesaj-govde">
+              <div className="mesaj-govde" aria-live="polite" aria-atomic="false">
                 {akanMetin ? (
                   <>
                     <Markdown metin={akanMetin} />
@@ -333,8 +347,9 @@ export default function App() {
             </div>
           )}
 
-          {hata && <p className="kucuk-not" style={{ color: "var(--warn)" }}>{hata}</p>}
-          <div ref={dip} style={{ height: "1rem" }} />
+          {hata && <p className="kucuk-not hata-satiri" role="alert">{hata}</p>}
+          <div style={{ height: "1.5rem" }} />
+        </div>
         </div>
 
         <Alt
