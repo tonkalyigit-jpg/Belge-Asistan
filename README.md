@@ -10,8 +10,34 @@ okunur. Belgede olmayan bir şey sorulursa uydurmaz, bulamadığını söyler.
 python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 echo "GEMINI_API_KEY=..." > .env && chmod 600 .env
-.venv/bin/streamlit run app.py
 ```
+
+## İki arayüz, tek çekirdek
+
+Aynı boru hattını (`core/`, `belge/`, `memory/`) iki arayüz kullanıyor.
+Hangisini açarsanız açın belgeler, sohbetler ve indeks aynı.
+
+**Streamlit** — tek komutla çalışan, Python'dan çıkmayan sürüm:
+
+```bash
+.venv/bin/streamlit run app.py          # http://localhost:8501
+```
+
+**React** — HTTP API + Vite. İki süreç:
+
+```bash
+.venv/bin/python -m uvicorn api.server:app --port 8000     # API
+cd web && npm install && npm run dev                       # http://localhost:5173
+```
+
+API'nin ucu `api/server.py`: belgeler, sohbetler, oy ve sayfa görüntüsü için
+JSON; cevap ile yükleme ilerlemesi için SSE (`/api/sor`, `/api/belgeler/...`).
+React tarafı `web/src/`; tasarım dili Streamlit sürümüyle aynı, metinler
+`web/src/sozluk.ts` içinde.
+
+> İkisi AYNI ANDA açık olabilir ama belge yükleme/silme yalnızca birinden
+> yapılmalı: vektör indeksi bellekte tutulup diske yazılıyor ve iki süreç aynı
+> anda yazarsa satır numaraları çakışır.
 
 ## Akış
 
