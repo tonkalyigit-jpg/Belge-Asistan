@@ -3,8 +3,35 @@
  *  çünkü çekirdeğin kendi adlandırması öyle ve iki tarafı ayrıştırmak sessiz
  *  hatalara davetiye. */
 
+export interface Kullanici {
+  id: number;
+  username: string;
+  ad: string;
+  rol: "admin" | "user";
+  aktif: boolean;
+  created_at: string;
+  last_login: string | null;
+}
+
+/** Admin panelindeki kullanım satırı. Soru METNİ yok: admin kimin ne
+ *  sorduğunu değil, ne kadar kullandığını görüyor. */
+export interface KullanimSatiri {
+  id: number;
+  username: string;
+  display_name: string | null;
+  role: string;
+  last_login: string | null;
+  sorgu: number;
+  maliyet: number;
+  ort_ms: number;
+  belge: number;
+  sohbet: number;
+}
+
 export interface Belge {
   id: number;
+  owner_id: number | null;
+  paylasim: "ozel" | "ortak";
   filename: string;
   title: string | null;
   page_count: number;
@@ -85,6 +112,7 @@ export interface SohbetOzeti {
 }
 
 export interface Durum {
+  kullanici: Kullanici;
   isinma: { bitti: boolean; saniye: number; hata: string };
   maliyet: {
     queries: number;

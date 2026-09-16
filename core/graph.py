@@ -83,6 +83,8 @@ def run(
     on_step=None,
     force_tier: str | None = None,
     scope_document_ids: list[int] | None = None,
+    izinli_belgeler: list[int] | None = None,
+    user_id: int | None = None,
 ) -> QueryState:
     """Bir sorguyu uçtan uca çalıştırır ve tamamlanmış durumu döner.
 
@@ -97,6 +99,10 @@ def run(
     riski taşıyordu.
     """
     state = QueryState(query=query.strip(), history=history or [])
+    # Kullanıcının göremediği bir belge bu sorgunun HİÇBİR adımına giremez:
+    # ne aramaya, ne sınıflandırıcının gördüğü listeye, ne atıflara.
+    state.izinli_belgeler = izinli_belgeler
+    state.user_id = user_id
     state.on_step = on_step
     budget = Budget(state)
 
@@ -104,7 +110,7 @@ def run(
     # arada silinmişse sessizce tüm belgelerde aramak yanlış olurdu —
     # kullanıcı "yalnızca bu belgede" dedi. Odak düşüyor ve not düşülüyor.
     if scope_document_ids:
-        hazir = {b["id"]: b for b in classifier.hazir_belgeler()}
+        hazir = {b["id"]: b for b in classifier.hazir_belgeler(izinli_belgeler)}
         gecerli = [i for i in scope_document_ids if i in hazir]
         if len(gecerli) < len(scope_document_ids):
             state.note("Odaklanılan belge artık yüklü değil; odak kaldırıldı")
@@ -140,7 +146,7 @@ def run(
             simple_paths.summary(state)
         return _finish(state, budget, persist)
 
-    if not classifier.hazir_belgeler():
+    if not classifier.hazir_belgeler(izinli_belgeler):
         state.route = Route.REFUSAL
         state.answer = simple_paths.no_documents_message(state.lang)
         return _finish(state, budget, persist)
@@ -189,7 +195,8 @@ def run(
     # --- 5. Belgelerde yoksa dürüstçe söyle ---
     if not state.graded_hits:
         state.route = Route.RAG
-        adlar = {b["id"]: b["title"] or b["filename"] for b in classifier.hazir_belgeler()}
+        adlar = {b["id"]: b["title"] or b["filename"]
+                 for b in classifier.hazir_belgeler(izinli_belgeler)}
         state.answer = (generate.not_found_message(
                             state.lang, scope_titles=state.scope_titles,
                             searched_titles=[adlar[i] for i in state.document_ids if i in adlar])
@@ -368,8 +375,10 @@ def _belgelerde_var_mi(state: QueryState) -> bool:
     try:
         if state.query_vector is None:
             state.query_vector = embedder.encode_one(state.query, is_query=True)
+        izinli = set(state.izinli_belgeler) if state.izinli_belgeler is not None else None
         hits = store.search(state.query, query_vector=state.query_vector,
-                            top_k=1, kinds=("body",), max_per_document=1)
+                            top_k=1, kinds=("body",), max_per_document=1,
+                            document_ids=izinli)
     except Exception as exc:          # arama çökerse ret yolu bozulmasın
         state.note(f"Kapsam kontrolü yapılamadı: {exc}")
         return False

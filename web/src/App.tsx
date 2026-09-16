@@ -7,9 +7,11 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, sor, yukle } from "./api";
-import type { Belge, Durum, Mesaj, SohbetOzeti, Sonuc } from "./types";
+import type { Belge, Durum, Kullanici, Mesaj, SohbetOzeti, Sonuc } from "./types";
 import { ADIM, T, YUKLEME_ASAMA } from "./sozluk";
 import { Alt } from "./components/Alt";
+import { Giris } from "./components/Giris";
+import { Yonetim } from "./components/Yonetim";
 import { Eylemler } from "./components/Eylemler";
 import { Iz } from "./components/Iz";
 import { Kaynaklar } from "./components/Kaynaklar";
@@ -37,6 +39,9 @@ export default function App() {
   const [yuklemeNotu, setYuklemeNotu] = useState<string | null>(null);
   const [kenarAcik, setKenarAcik] = useState(false);
   const [hata, setHata] = useState<string | null>(null);
+  // `undefined` = oturum henüz sorulmadı, `null` = giriş gerekiyor.
+  const [ben, setBen] = useState<Kullanici | null | undefined>(undefined);
+  const [yonetimAcik, setYonetimAcik] = useState(false);
 
   // Akış durumu: biten adımlar, çalışan adım, o ana kadar yazılan metin.
   const [calisiyor, setCalisiyor] = useState(false);
@@ -72,11 +77,18 @@ export default function App() {
     }
   }, []);
 
+  // Açılışta önce KİMLİK: oturum yoksa giriş ekranı çiziliyor ve hiçbir veri
+  // isteği yapılmıyor (hepsi 401 dönerdi).
   useEffect(() => {
+    api.ben().then(setBen).catch(() => setBen(null));
+  }, []);
+
+  useEffect(() => {
+    if (!ben) return;
     yenile()
-      .then((s) => { if (s.length) acSohbet(s[0].id); })
+      .then((s) => { if (s.length) acSohbet(s[0].id); else setMesajlar([]); })
       .catch((e) => setHata(String(e)));
-  }, [yenile, acSohbet]);
+  }, [ben, yenile, acSohbet]);
 
   // Süre sayacı yalnızca çalışırken dönüyor: boştayken saniyede bir render
   // etmenin anlamı yok.
@@ -125,11 +137,11 @@ export default function App() {
     if (liste) setSohbetler(liste);
   }
 
-  async function dosyaYukle(dosyalar: FileList) {
+  async function dosyaYukle(dosyalar: FileList, ortak = false) {
     for (const dosya of Array.from(dosyalar)) {
       setYuklemeNotu(`${dosya.name} okunuyor…`);
       await new Promise<void>((bitir) => {
-        yukle(dosya, {
+        yukle(dosya, ortak, {
           onAsama: (asama, i, n) =>
             setYuklemeNotu(`${dosya.name} — ${YUKLEME_ASAMA[asama] ?? asama}${n > 1 ? ` ${i}/${n}` : ""}`),
           onBitti: (sonuc) => {
@@ -161,6 +173,16 @@ export default function App() {
       });
       await yenile();
     }
+  }
+
+  async function cikis() {
+    await guvenle(api.cikis(), "Çıkış yapılamadı");
+    setBen(null);
+    setMesajlar([]);
+    setSohbetler([]);
+    setBelgeler([]);
+    setSohbetId(null);
+    setYonetimAcik(false);
   }
 
   async function belgeSil(id: number) {
@@ -236,6 +258,11 @@ export default function App() {
   const odakBelge = belgeler.find((b) => b.id === odak && b.status === "ready") ?? null;
   const hazir = belgeler.filter((b) => b.status === "ready");
 
+  // Oturum sorusu dönmeden hiçbir şey çizilmiyor: bir an sohbet ekranını
+  // gösterip sonra giriş ekranına atlamak, "sistem beni attı" gibi görünüyor.
+  if (ben === undefined) return <div className="yukleniyor" />;
+  if (ben === null) return <Giris onGiris={(k) => { setBen(k); setHata(null); }} />;
+
   return (
     <div className="kabuk">
       <button className="kenar-anahtar" onClick={() => setKenarAcik((a) => !a)}
@@ -258,9 +285,20 @@ export default function App() {
           onSohbetSil={sohbetSil}
         onYeniSohbet={yeniSohbet}
         acik={kenarAcik}
+        ben={ben}
+        onCikis={cikis}
+        onYonetim={() => { setYonetimAcik(true); setKenarAcik(false); }}
       />
 
       <main className="govde">
+        {yonetimAcik && ben.rol === "admin" ? (
+          <div className="akis">
+            <div className="sutun">
+              <Yonetim ben={ben} onKapat={() => setYonetimAcik(false)} />
+            </div>
+          </div>
+        ) : (
+        <>
         <div className="akis" ref={akis} onScroll={kaydirmaIzle}>
         <div className="sutun" role="log" aria-live="polite" aria-busy={calisiyor}>
           <div className="manset">
@@ -381,6 +419,8 @@ export default function App() {
           onGonder={(soru) => calistir(soru)}
           modelAdlari={durum?.kipler ?? {}}
         />
+        </>
+        )}
       </main>
     </div>
   );

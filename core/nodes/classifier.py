@@ -29,11 +29,22 @@ _HISTORY_CHARS = 700
 _MAX_LISTED_DOCUMENTS = 60
 
 
-def hazir_belgeler() -> list[dict]:
+def hazir_belgeler(izinli: list[int] | None = None) -> list[dict]:
+    """Soruya girebilecek belgeler.
+
+    `izinli` verildiğinde YALNIZCA o kimlikler dönüyor — çok kullanıcılı
+    kurulumda kullanıcının kendi belgeleri ve ortak havuz. Filtre burada,
+    tek yerde: sınıflandırıcının gördüğü liste, reddetme metnindeki öneriler
+    ve çapraz aramanın hedefi hep bu fonksiyondan geçiyor.
+    """
     rows = db.connect().execute(
         "SELECT id, title, filename, summary FROM documents WHERE status = 'ready' ORDER BY id"
     ).fetchall()
-    return [dict(r) for r in rows]
+    belgeler = [dict(r) for r in rows]
+    if izinli is None:
+        return belgeler
+    kume = set(izinli)
+    return [b for b in belgeler if b["id"] in kume]
 
 
 # 180 DEĞİL: özetlerin ilk cümlesi "Bu belge, X tarafından yayımlanan…" diye
@@ -72,7 +83,7 @@ def _belge_listesi(belgeler: list[dict]) -> str:
 
 def run(state: QueryState) -> QueryState:
     provider = registry.tier("cheap")
-    belgeler = hazir_belgeler()
+    belgeler = hazir_belgeler(state.izinli_belgeler)
     gecerli_idler = {b["id"] for b in belgeler}
 
     # Geri bildirimden öğrenilen örnekler ve geçmiş, sistem prompt'una DEĞİL

@@ -4,7 +4,7 @@
  *  burada. Kapalı başlasaydı ilk ekran boş bir sohbet kutusu olurdu.
  */
 import { useRef, useState } from "react";
-import type { Belge, Durum, SohbetOzeti } from "../types";
+import type { Belge, Durum, Kullanici, SohbetOzeti } from "../types";
 import { T, tarih, tur } from "../sozluk";
 import { Ikon, Katlanir } from "./Ogeler";
 
@@ -17,13 +17,16 @@ interface Props {
   durum: Durum | null;
   odak: number | null;
   yukleniyor: string | null;
-  onYukle: (dosyalar: FileList) => void;
+  onYukle: (dosyalar: FileList, ortak?: boolean) => void;
   onBelgeSil: (id: number) => void;
   onOdak: (id: number | null) => void;
   onSohbetAc: (id: number) => void;
   onSohbetSil: (id: number) => void;
   onYeniSohbet: () => void;
   acik: boolean;
+  ben: Kullanici;
+  onCikis: () => void;
+  onYonetim: () => void;
 }
 
 export function Kenar(p: Props) {
@@ -31,7 +34,9 @@ export function Kenar(p: Props) {
   const [silinecekBelge, setSilinecekBelge] = useState<number | null>(null);
   const [silinecekSohbet, setSilinecekSohbet] = useState<number | null>(null);
   const [uzerinde, setUzerinde] = useState(false);
+  const [ortak, setOrtak] = useState(false);
   const girdi = useRef<HTMLInputElement>(null);
+  const yonetici = p.ben.rol === "admin";
 
   return (
     <aside className={`kenar${p.acik ? " acik" : ""}`}>
@@ -44,18 +49,27 @@ export function Kenar(p: Props) {
         onDrop={(e) => {
           e.preventDefault();
           setUzerinde(false);
-          if (e.dataTransfer.files.length) p.onYukle(e.dataTransfer.files);
+          if (e.dataTransfer.files.length) p.onYukle(e.dataTransfer.files, ortak);
         }}
       >
         <input ref={girdi} type="file" accept="application/pdf" multiple hidden
                onChange={(e) => {
-                 if (e.target.files?.length) p.onYukle(e.target.files);
+                 if (e.target.files?.length) p.onYukle(e.target.files, ortak);
                  e.target.value = "";     // aynı dosya tekrar seçilebilsin
                }} />
         <button className="secdugme" onClick={() => girdi.current?.click()}>
           <Ikon ad="upload" /> {t.upload}
         </button>
         <span className="ipucu">{p.yukleniyor ?? t.upload_hint}</span>
+        {/* Ortak havuz YALNIZCA yöneticide: sıradan bir kullanıcı kendi
+            belgesini herkese açamıyor (sunucu da reddediyor). */}
+        {yonetici && (
+          <label className="ortak-secim">
+            <input type="checkbox" checked={ortak}
+                   onChange={(e) => setOrtak(e.target.checked)} />
+            <span>Ortak havuza yükle — herkes görür</span>
+          </label>
+        )}
       </div>
 
       {!p.belgeler.length && <p className="kucuk-not" style={{ marginTop: ".8rem" }}>{t.no_documents}</p>}
@@ -65,6 +79,7 @@ export function Kenar(p: Props) {
           const ad = belge.title || belge.filename;
           const secili = acikBelge === belge.id;
           const odakli = p.odak === belge.id;
+          const benim = belge.owner_id === p.ben.id;
 
           if (silinecekBelge === belge.id) {
             return (
@@ -100,15 +115,20 @@ export function Kenar(p: Props) {
                        }
                      }}>
                   <span className="ad">
-                    {odakli ? "◉ " : ""}
+                      {odakli ? "◉ " : ""}
                     {belge.status === "processing" ? "… " : belge.status === "failed" ? "! " : ""}
                     {ad}
+                    {belge.paylasim === "ortak" && <span className="ortak-rozet">ortak</span>}
                   </span>
                 </div>
-                <button className="satir-sil" title={t.delete_doc} aria-label={t.delete_doc}
-                        onClick={() => setSilinecekBelge(belge.id)}>
-                  <Ikon ad="delete" />
-                </button>
+                {/* Silme yalnızca SAHİBİNDE: ortak havuzdaki bir belgeyi
+                    kullanan kişi silemez, yönetici de başkasınınkini silmez. */}
+                {benim && (
+                  <button className="satir-sil" title={t.delete_doc} aria-label={t.delete_doc}
+                          onClick={() => setSilinecekBelge(belge.id)}>
+                    <Ikon ad="delete" />
+                  </button>
+                )}
               </div>
 
               {secili && (
@@ -222,6 +242,28 @@ export function Kenar(p: Props) {
           ))}
         </>
       } />
+
+      <div className="ayrac" />
+
+      {/* Kim olduğun her zaman görünür: paylaşılan bir makinede "hangi hesapla
+          açığım" sorusu belge yüklemeden önce cevaplanmalı. */}
+      <div className="hesap">
+        <div className="hesap-ad">
+          <Ikon ad="account_circle" />
+          <span>
+            <strong>{p.ben.ad}</strong>
+            <span className="hesap-rol">{yonetici ? "yönetici" : "kullanıcı"}</span>
+          </span>
+        </div>
+        {yonetici && (
+          <button className="hesap-dugme" onClick={p.onYonetim}>
+            <Ikon ad="settings" /> Yönetim
+          </button>
+        )}
+        <button className="hesap-dugme" onClick={p.onCikis}>
+          <Ikon ad="logout" /> Çıkış
+        </button>
+      </div>
     </aside>
   );
 }

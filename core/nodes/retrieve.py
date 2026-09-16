@@ -43,7 +43,7 @@ def run(state: QueryState) -> QueryState:
 
     top_k = int(config.get("retrieval.top_k", 8))
     max_chunks = max(top_k, int(config.get("retrieval.max_chunks", 24)))
-    scope = set(state.document_ids) or None
+    scope = _kapsam(state)
 
     # ADI GEÇEN BELGE KÜÇÜKSE TAMAMI OKUNUYOR.
     #
@@ -159,18 +159,32 @@ def _butceye_gore(hits: list, *, en_az: int) -> list:
     return out
 
 
+def _kapsam(state: QueryState) -> set[int] | None:
+    """Aramanın sınırı: sorunun andığı belgeler ∩ kullanıcının görebildikleri.
+
+    İzin kontrolü arama katmanında: bir üst katman unutsa bile (yeni bir uç,
+    yeni bir düğüm) başka kullanıcının belgesi sonuçlara giremiyor.
+    """
+    adi_gecen = set(state.document_ids)
+    izinli = set(state.izinli_belgeler) if state.izinli_belgeler is not None else None
+    if izinli is None:
+        return adi_gecen or None
+    return (adi_gecen & izinli) if adi_gecen else izinli
+
+
 def _capraz(store, state: QueryState, queries, vectors) -> list:
     per_doc = int(config.get("retrieval.capraz_per_document", 3))
     max_docs = int(config.get("retrieval.capraz_max_documents", 8))
 
     if len(state.document_ids) >= 2:
-        hedef = state.document_ids
+        izinli = state.izinli_belgeler
+        hedef = ([d for d in state.document_ids if izinli is None or d in set(izinli)])
     else:
         # Tek belge adı verilmiş ya da hiç verilmemiş: karşılaştırma tüm
         # belgelere karşı. "Güney sözleşmesi yönetmeliğe uyuyor mu?" sorusunda
         # sınıflandırıcı yalnızca Güney'i döndürse bile yönetmeliğin okunması
         # gerekiyor.
-        hedef = [b["id"] for b in hazir_belgeler()]
+        hedef = [b["id"] for b in hazir_belgeler(state.izinli_belgeler)]
     # BELGELER BAĞLAMA SIĞIYORSA ARAMA YOK, TAMAMI OKUNUYOR.
     #
     # Uygunluk kontrolünde ("hangi sözleşme yönetmeliğe aykırı?") hangi

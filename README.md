@@ -32,6 +32,38 @@ cd web && npm run dev                                    # http://localhost:5173
 Vite `/api` isteklerini 8000'e taşıyor (`web/vite.config.ts`), yani kod iki
 modda da aynı yolu kullanıyor.
 
+## Kullanıcılar ve erişim
+
+Sistem çok kullanıcılı. Hesapları yönetici açıyor, kimse kendi kendine kayıt
+olmuyor.
+
+| | Kullanıcı | Yönetici |
+|---|---|---|
+| Kendi belgeleri | yükler, sorar, siler | aynı |
+| Başkasının belgesi | **göremez** | **göremez** |
+| Ortak havuz | okur, soruya girer | yükler ve yönetir |
+| Sohbetler | yalnızca kendi | yalnızca kendi |
+| Hesaplar | — | açar, siler, parola sıfırlar, rol değiştirir |
+| Kullanım istatistiği | kendi maliyeti | kişi bazında sorgu/maliyet/belge sayısı |
+
+Yönetici **belge içeriğini ve sohbetleri göremez**: panelin konuştuğu uçlar
+böyle bir veri döndürmüyor, `/api/belgeler` ve `/api/sohbetler` de yöneticiye
+ayrıcalık tanımıyor. Erişim kuralı tek yerde — `memory/kullanicilar.py`
+içindeki `gorulebilir_ids` — ve arama, sınıflandırıcı, atıflar, sayfa
+görüntüsü hepsi oradan geçiyor.
+
+**İlk açılış:** kullanıcı tablosu boşsa `admin` hesabı açılıyor ve parolası
+sunucu log'una bir kez yazılıyor (veritabanında yalnızca hash'i duruyor).
+Parolayı önceden belirlemek için:
+
+```bash
+BELGE_ADMIN_PAROLA=... .venv/bin/python -m uvicorn api.server:app --port 8000
+```
+
+Parolalar `scrypt` ile saklanıyor; oturum çerezi HttpOnly ve veritabanında
+jetonun kendisi değil sha256'sı tutuluyor. HTTPS'e geçilirse
+`api/server.py`'deki `HTTPS = True` yapılmalı (çerez `Secure` bayrağı).
+
 ## Mimari
 
 Arayüz React ve **tarayıcıda** çalışıyor; boru hattı (`core/`, `belge/`,

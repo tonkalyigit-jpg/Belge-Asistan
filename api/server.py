@@ -26,7 +26,9 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import queue
+import secrets
 import sys
 import threading
 import time
@@ -45,7 +47,7 @@ from belge import ingest
 from belge import pdf as pdfmod
 from core import graph
 from llm import registry
-from memory import conversations, feedback
+from memory import conversations, feedback, kullanicilar
 from observability import trace
 
 app = FastAPI(title="Belge Asistanı API")
@@ -81,8 +83,44 @@ def _isit() -> None:
         _isinma["bitti"] = True
 
 
+def _ilk_kurulum() -> None:
+    """İlk açılışta yönetici hesabı ve sahipsiz kayıtların devri.
+
+    Hesapları admin açıyor, kimse kendi kendine kayıt olmuyor — ama ilk
+    admin'i açacak bir admin yok. Bu yüzden kullanıcı tablosu boşken bir kez
+    yönetici oluşuyor. Parola `BELGE_ADMIN_PAROLA` ortam değişkeninden
+    geliyor; yoksa rastgele üretilip LOG'A BİR KEZ yazılıyor (veritabanında
+    yalnızca hash'i duruyor, geri okunamıyor).
+    """
+    from core import db
+
+    if kullanicilar.sayi():
+        return
+    parola = os.environ.get("BELGE_ADMIN_PAROLA") or secrets.token_urlsafe(9)
+    kullanicilar.olustur("admin", parola, rol="admin", ad="Yönetici")
+    if not os.environ.get("BELGE_ADMIN_PAROLA"):
+        print("\n" + "=" * 62, flush=True)
+        print("  İLK KURULUM — yönetici hesabı açıldı", flush=True)
+        print("  kullanıcı: admin", flush=True)
+        print(f"  parola   : {parola}", flush=True)
+        print("  Bu parola bir daha gösterilmeyecek; girdikten sonra", flush=True)
+        print("  yönetim panelinden değiştirin.", flush=True)
+        print("=" * 62 + "\n", flush=True)
+
+    # Tek kullanıcılı sürümden kalan kayıtlar: belgeler yöneticiye geçiyor ve
+    # ORTAK havuza alınıyor (yönetmelik, veri sayfası gibi referans belgeler);
+    # sohbetler de yöneticinin oluyor.
+    conn = db.connect()
+    admin = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+    conn.execute("UPDATE documents SET owner_id = ?, paylasim = 'ortak' "
+                 "WHERE owner_id IS NULL", (admin,))
+    conn.execute("UPDATE conversations SET owner_id = ? WHERE owner_id IS NULL", (admin,))
+    conn.commit()
+
+
 @app.on_event("startup")
 def _baslat() -> None:
+    _ilk_kurulum()
     threading.Thread(target=_isit, daemon=True).start()
 
 
@@ -90,18 +128,98 @@ def _sse(olay: str, veri: dict) -> str:
     return f"event: {olay}\ndata: {json.dumps(veri, ensure_ascii=False)}\n\n"
 
 
+# --- kimlik ---------------------------------------------------------------
+#
+# Oturum çerezi HttpOnly: JavaScript okuyamıyor, yani sayfaya sızan bir script
+# jetonu çalamaz. `Secure` BİLEREK kapalı — kurulum şirket ağında HTTP üzerinden
+# çalışıyor ve bayrak açık olsaydı çerez hiç gönderilmezdi. HTTPS'e geçildiğinde
+# açılmalı (aşağıdaki sabit).
+CEREZ = "belge_oturum"
+HTTPS = False
+
+
+def kim(istek: Request) -> dict:
+    """İsteği yapan kullanıcı; oturum yoksa 401.
+
+    Her uç bunu KULLANMAK ZORUNDA: eklenen yeni bir uç bağımlılığı unutursa
+    kimlik kontrolü de unutulmuş olur, o yüzden testte de kontrol ediliyor.
+    """
+    kullanici = kullanicilar.oturum_sahibi(istek.cookies.get(CEREZ))
+    if kullanici is None:
+        raise HTTPException(401, "Oturum yok")
+    return kullanici
+
+
+def yonetici(istek: Request) -> dict:
+    kullanici = kim(istek)
+    if kullanici["rol"] != "admin":
+        raise HTTPException(403, "Bu işlem yönetici yetkisi istiyor")
+    return kullanici
+
+
+@app.post("/api/giris")
+async def giris(istek: Request) -> Response:
+    govde = await istek.json()
+    kullanici = kullanicilar.dogrula(govde.get("kullanici", ""), govde.get("parola", ""))
+    if kullanici is None:
+        # Hangi kısmın yanlış olduğu SÖYLENMİYOR: "böyle bir kullanıcı yok"
+        # cevabı, geçerli kullanıcı adlarını dışarıdan taramaya izin verir.
+        raise HTTPException(401, "Kullanıcı adı ya da parola hatalı")
+    jeton = kullanicilar.oturum_ac(kullanici["id"])
+    cevap = Response(json.dumps(kullanici, ensure_ascii=False),
+                     media_type="application/json")
+    cevap.set_cookie(CEREZ, jeton, httponly=True, samesite="lax",
+                     secure=HTTPS, max_age=60 * 60 * 24 * 14, path="/")
+    return cevap
+
+
+@app.post("/api/cikis")
+def cikis(istek: Request) -> Response:
+    kullanicilar.oturum_kapat(istek.cookies.get(CEREZ))
+    cevap = Response(json.dumps({"cikildi": True}), media_type="application/json")
+    cevap.delete_cookie(CEREZ, path="/")
+    return cevap
+
+
+@app.post("/api/parola")
+async def parola(istek: Request) -> dict:
+    """Kullanıcının kendi parolasını değiştirmesi — eskisini bilmek şart."""
+    kullanici = kim(istek)
+    govde = await istek.json()
+    if kullanicilar.dogrula(kullanici["username"], govde.get("eski", "")) is None:
+        raise HTTPException(400, "Mevcut parola hatalı")
+    try:
+        kullanicilar.parola_degistir(kullanici["id"], govde.get("yeni", ""))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    # Parola değişince tüm oturumlar kapanıyor; kullanıcı yeniden girecek.
+    return {"guncellendi": True}
+
+
+@app.get("/api/ben")
+def ben(istek: Request) -> dict:
+    """Açılışta arayüz bunu soruyor: oturum var mı, kim, hangi rol."""
+    kullanici = kullanicilar.oturum_sahibi(istek.cookies.get(CEREZ))
+    if kullanici is None:
+        raise HTTPException(401, "Oturum yok")
+    return kullanici
+
+
 # --- durum ----------------------------------------------------------------
 
 
 @app.get("/api/durum")
-def durum() -> dict:
+def durum(istek: Request) -> dict:
+    kullanici = kim(istek)
     return {
+        "kullanici": kullanici,
         "isinma": {
             "bitti": _isinma["bitti"],
             "saniye": round(time.time() - _isinma["basladi"], 1),
             "hata": _isinma["hata"],
         },
-        "maliyet": trace.summary(),
+        # Kendi kullanımı: şirketin toplamı herkese gösterilmiyor.
+        "maliyet": trace.summary(kullanici["id"]),
         "modeller": registry.describe(),
         "kipler": {
             ad: config.get(f"tiers.{ad}.model", "") for ad in ("writer", "strong")
@@ -113,21 +231,27 @@ def durum() -> dict:
 
 
 @app.get("/api/belgeler")
-def belgeler() -> list[dict]:
-    return ingest.listele()
+def belgeler(istek: Request) -> list[dict]:
+    kullanici = kim(istek)
+    return ingest.listele(kullanici["id"])
 
 
 _yuklemeler: dict[str, dict] = {}
 
 
 @app.post("/api/belgeler")
-async def belge_yukle(dosya: UploadFile = File(...)) -> dict:
+async def belge_yukle(istek: Request, dosya: UploadFile = File(...),
+                      ortak: bool = False) -> dict:
     """Yüklemeyi başlatır, iş kimliği döner. İlerleme SSE ile izleniyor.
 
     Yükleme 10 saniye ile dakikalar arasında sürüyor (taranmış sayfa başına bir
     OCR çağrısı). İsteği bitene kadar açık tutmak tarayıcı zaman aşımına
     açık; iş arka planda koşuyor ve ilerleme ayrı bir akıştan okunuyor.
     """
+    kullanici = kim(istek)
+    # ORTAK HAVUZA YALNIZCA ADMIN YÜKLER: sıradan bir kullanıcı kendi belgesini
+    # herkese açamaz, çünkü o belge şirketin ortak kaynağı değil.
+    paylasim = "ortak" if (ortak and kullanici["rol"] == "admin") else "ozel"
     veri = await dosya.read()
     ad = dosya.filename or "belge.pdf"
     is_id = uuid.uuid4().hex[:12]
@@ -139,7 +263,8 @@ async def belge_yukle(dosya: UploadFile = File(...)) -> dict:
             olaylar.put({"tip": "asama", "asama": asama, "i": i, "n": n})
 
         try:
-            sonuc = ingest.yukle(veri, ad, on_progress=ilerleme)
+            sonuc = ingest.yukle(veri, ad, on_progress=ilerleme,
+                                 owner_id=kullanici["id"], paylasim=paylasim)
             _yuklemeler[is_id]["sonuc"] = sonuc
             olaylar.put({
                 "tip": "bitti",
@@ -183,14 +308,30 @@ def yukleme_akisi(is_id: str) -> StreamingResponse:
 
 
 @app.delete("/api/belgeler/{belge_id}")
-def belge_sil(belge_id: int) -> dict:
+def belge_sil(belge_id: int, istek: Request) -> dict:
+    """Belgeyi yalnızca SAHİBİ siler.
+
+    Admin de silemiyor: seçilen yetki modelinde admin başkasının belgesine
+    dokunmuyor. Bir hesabı tümden silmek gerekirse o kullanıcının belgeleri
+    hesabıyla birlikte gidiyor (admin panelindeki hesap silme).
+    """
+    kullanici = kim(istek)
+    if not kullanicilar.belge_sahibi_mi(kullanici["id"], belge_id):
+        raise HTTPException(403, "Bu belge sizin değil")
     ingest.sil(belge_id)
     return {"silindi": belge_id}
 
 
 @app.get("/api/belgeler/{belge_id}/sayfa/{sayfa_no}")
-def belge_sayfasi(belge_id: int, sayfa_no: int) -> Response:
-    """Sayfanın PNG görüntüsü — cevabın dayandığı kâğıdın kendisi."""
+def belge_sayfasi(belge_id: int, sayfa_no: int, istek: Request) -> Response:
+    """Sayfanın PNG görüntüsü — cevabın dayandığı kâğıdın kendisi.
+
+    İZİN BURADA DA KONTROL EDİLİYOR: kimlik numarasını elle değiştiren biri
+    başkasının belgesinin sayfasını göremesin. Arayüzün göstermemesi yetmez.
+    """
+    kullanici = kim(istek)
+    if not kullanicilar.gorebilir_mi(kullanici["id"], belge_id):
+        raise HTTPException(403, "Bu belgeye erişiminiz yok")
     veri = ingest.pdf_bytes(belge_id)
     if not veri:
         raise HTTPException(404, "Belge dosyası bulunamadı")
@@ -209,22 +350,40 @@ def belge_sayfasi(belge_id: int, sayfa_no: int) -> Response:
 
 
 @app.get("/api/sohbetler")
-def sohbetler() -> list[dict]:
-    return conversations.list_all()
+def sohbetler(istek: Request) -> list[dict]:
+    return conversations.list_all(owner_id=kim(istek)["id"])
 
 
 @app.post("/api/sohbetler")
-def sohbet_ac() -> dict:
-    return {"id": conversations.create()}
+def sohbet_ac(istek: Request) -> dict:
+    """Yeni sohbet. Kullanıcının BOŞ bir sohbeti varsa o yeniden kullanılıyor.
+
+    Her tıklamada yeni kayıt açmak listeyi üst üste "Yeni sohbet" satırlarıyla
+    dolduruyordu (canlıda altı tane birikti): boş bir sohbet, açılmamış bir
+    sohbetle aynı şey.
+    """
+    kullanici = kim(istek)
+    for sohbet in conversations.list_all(limit=5, owner_id=kullanici["id"]):
+        if sohbet["n"] == 0:
+            return {"id": sohbet["id"]}
+    return {"id": conversations.create(owner_id=kullanici["id"])}
+
+
+def _sohbetim(sohbet_id: int, kullanici: dict) -> None:
+    """Sohbet bu kullanıcıya ait değilse 403. Admin için de geçerli."""
+    if conversations.sahibi(sohbet_id) != kullanici["id"]:
+        raise HTTPException(403, "Bu sohbet sizin değil")
 
 
 @app.get("/api/sohbetler/{sohbet_id}")
-def sohbet(sohbet_id: int) -> dict:
+def sohbet(sohbet_id: int, istek: Request) -> dict:
+    _sohbetim(sohbet_id, kim(istek))
     return {"id": sohbet_id, "mesajlar": conversations.load(sohbet_id)}
 
 
 @app.delete("/api/sohbetler/{sohbet_id}")
-def sohbet_sil(sohbet_id: int) -> dict:
+def sohbet_sil(sohbet_id: int, istek: Request) -> dict:
+    _sohbetim(sohbet_id, kim(istek))
     conversations.delete(sohbet_id)
     return {"silindi": sohbet_id}
 
@@ -241,21 +400,26 @@ async def sor(istek: Request) -> StreamingResponse:
     üretim ile gösterim ayrı, çünkü sağlayıcı metni düzensiz aralıklarla
     gönderiyor.
     """
+    kullanici = kim(istek)
     govde = await istek.json()
     soru = (govde.get("soru") or "").strip()
     sohbet_id = govde.get("sohbet_id")
     kip = govde.get("kip") or "writer"
     odak = govde.get("odak_belge_id")
+    izinli = kullanicilar.gorulebilir_ids(kullanici["id"])
+    if odak is not None and int(odak) not in izinli:
+        odak = None          # göremediği bir belgeye odaklanamaz
     yeniden = bool(govde.get("yeniden"))
     if not soru:
         raise HTTPException(400, "Soru boş")
     # SOHBET HÂLÂ VAR MI? Tarayıcı elindeki kimliği gönderiyor ve o sohbet bu
     # arada silinmiş olabilir (başka sekme, Streamlit arayüzü, temizlik).
     # Yoksa mesaj eklemek FOREIGN KEY hatasıyla düşüyordu — canlıda yaşandı.
-    if sohbet_id is not None and not conversations.var_mi(int(sohbet_id)):
+    if sohbet_id is not None and conversations.sahibi(int(sohbet_id)) != kullanici["id"]:
+        # Ya silinmiş ya da başkasının: iki durumda da bu kullanıcı için yok.
         sohbet_id = None
     if sohbet_id is None:
-        sohbet_id = conversations.create()
+        sohbet_id = conversations.create(owner_id=kullanici["id"])
 
     gecmis = [
         {"role": m["role"], "content": m["content"]}
@@ -282,6 +446,7 @@ async def sor(istek: Request) -> StreamingResponse:
                 soru, on_delta=parcalar.put, history=gecmis, regenerate=yeniden,
                 on_step=adimlar.put, force_tier=kip,
                 scope_document_ids=[odak] if odak else None,
+                izinli_belgeler=izinli, user_id=kullanici["id"],
             )
         except Exception as exc:
             sonuc["hata"] = f"{type(exc).__name__}: {exc}"
@@ -337,6 +502,7 @@ async def sor(istek: Request) -> StreamingResponse:
 
 @app.post("/api/oy")
 async def oy(istek: Request) -> dict:
+    kullanici = kim(istek)
     govde = await istek.json()
     feedback.record(
         govde.get("soru", ""),
@@ -345,9 +511,91 @@ async def oy(istek: Request) -> dict:
         predicted_category=govde.get("kategori"),
     )
     sohbet_id, sira, etiket = govde.get("sohbet_id"), govde.get("sira"), govde.get("etiket", "")
+    if sohbet_id is not None and conversations.sahibi(int(sohbet_id)) != kullanici["id"]:
+        raise HTTPException(403, "Bu sohbet sizin değil")
     if sohbet_id is not None and sira is not None:
         conversations.set_vote(int(sohbet_id), int(sira), etiket)
     return {"kaydedildi": True}
+
+
+# --- yönetim --------------------------------------------------------------
+#
+# Admin HESAPLARI yönetiyor ve kullanım istatistiğini görüyor. Başkasının
+# belgesini okuyamıyor, sohbetini göremiyor: bu uçlarda öyle bir veri yok ve
+# /api/belgeler, /api/sohbetler de admin'e ayrıcalık tanımıyor.
+
+
+@app.get("/api/admin/kullanicilar")
+def admin_kullanicilar(istek: Request) -> list[dict]:
+    yonetici(istek)
+    return kullanicilar.listele()
+
+
+@app.post("/api/admin/kullanicilar")
+async def admin_kullanici_ac(istek: Request) -> dict:
+    yonetici(istek)
+    govde = await istek.json()
+    try:
+        yeni = kullanicilar.olustur(
+            govde.get("kullanici", ""), govde.get("parola", ""),
+            rol=govde.get("rol", "user"), ad=govde.get("ad", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"id": yeni}
+
+
+@app.post("/api/admin/parola")
+async def admin_parola(istek: Request) -> dict:
+    yonetici(istek)
+    govde = await istek.json()
+    try:
+        kullanicilar.parola_degistir(int(govde["id"]), govde.get("parola", ""))
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"guncellendi": True}
+
+
+@app.post("/api/admin/rol")
+async def admin_rol(istek: Request) -> dict:
+    ben_ = yonetici(istek)
+    govde = await istek.json()
+    hedef = int(govde["id"])
+    rol = govde.get("rol", "user")
+    # SON ADMIN KENDİNİ İNDİREMEZ: yöneticisiz kalan bir kurulumda hesap
+    # açmak ya da parola sıfırlamak mümkün olmaz.
+    if rol != "admin" and hedef == ben_["id"] and kullanicilar.admin_sayisi() <= 1:
+        raise HTTPException(400, "Son yönetici kendi yetkisini kaldıramaz")
+    try:
+        kullanicilar.rol_degistir(hedef, rol)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"guncellendi": True}
+
+
+@app.delete("/api/admin/kullanicilar/{user_id}")
+def admin_kullanici_sil(user_id: int, istek: Request) -> dict:
+    """Hesabı, belgelerini ve sohbetlerini siler.
+
+    Belgeler hesapla birlikte gidiyor: sahibi olmayan bir belge kimsenin
+    göremediği ama diskte duran bir dosya olurdu.
+    """
+    ben_ = yonetici(istek)
+    if user_id == ben_["id"]:
+        raise HTTPException(400, "Kendi hesabınızı silemezsiniz")
+    for belge in ingest.listele(hepsi=True):
+        if belge.get("owner_id") == user_id:
+            ingest.sil(belge["id"])
+    for sohbet in conversations.list_all(limit=1000, owner_id=user_id):
+        conversations.delete(sohbet["id"])
+    kullanicilar.sil(user_id)
+    return {"silindi": user_id}
+
+
+@app.get("/api/admin/istatistik")
+def admin_istatistik(istek: Request) -> dict:
+    yonetici(istek)
+    return {"kullanicilar": trace.kullanici_ozeti(), "toplam": trace.summary()}
 
 
 # --- arayüz ---------------------------------------------------------------

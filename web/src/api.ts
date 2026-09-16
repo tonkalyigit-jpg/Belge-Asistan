@@ -4,7 +4,7 @@
  *  destekliyor, soru gövdesi ise POST ile gidiyor (uzun metin, odak, kip).
  *  `fetch` + `ReadableStream` ikisini de karşılıyor ve iptal edilebiliyor.
  */
-import type { Belge, Durum, Mesaj, SohbetOzeti, Sonuc, YuklemeSonucu } from "./types";
+import type { Belge, Durum, Kullanici, KullanimSatiri, Mesaj, SohbetOzeti, Sonuc, YuklemeSonucu } from "./types";
 
 // Varsayılan AYNI KAYNAK: derlenmiş arayüz API ile aynı sunucudan veriliyor,
 // yani adres neyse istek de oraya gidiyor (başka bir makineye kurulduğunda da
@@ -12,13 +12,38 @@ import type { Belge, Durum, Mesaj, SohbetOzeti, Sonuc, YuklemeSonucu } from "./t
 // yapılandırmasındaki proxy 8000'e taşıyor.
 const KOK = import.meta.env.VITE_API ?? "";
 
+/** Oturum çerezi HttpOnly; `credentials: "include"` olmadan gönderilmiyor. */
 async function al<T>(yol: string, secenek?: RequestInit): Promise<T> {
-  const cevap = await fetch(`${KOK}${yol}`, secenek);
-  if (!cevap.ok) throw new Error(`${cevap.status} ${cevap.statusText}`);
+  const cevap = await fetch(`${KOK}${yol}`, { credentials: "include", ...secenek });
+  if (!cevap.ok) {
+    let mesaj = `${cevap.status} ${cevap.statusText}`;
+    try {
+      const govde = await cevap.json();
+      if (govde?.detail) mesaj = govde.detail;
+    } catch {
+      // gövde JSON değilse durum kodu yeterli
+    }
+    const hata = new Error(mesaj) as Error & { durum?: number };
+    hata.durum = cevap.status;
+    throw hata;
+  }
   return (await cevap.json()) as T;
 }
 
+function gonder<T>(yol: string, govde: unknown): Promise<T> {
+  return al<T>(yol, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(govde),
+  });
+}
+
 export const api = {
+  ben: () => al<Kullanici>("/api/ben"),
+  giris: (kullanici: string, parola: string) =>
+    gonder<Kullanici>("/api/giris", { kullanici, parola }),
+  cikis: () => gonder<unknown>("/api/cikis", {}),
+  parola: (eski: string, yeni: string) => gonder<unknown>("/api/parola", { eski, yeni }),
   durum: () => al<Durum>("/api/durum"),
   belgeler: () => al<Belge[]>("/api/belgeler"),
   belgeSil: (id: number) => al<unknown>(`/api/belgeler/${id}`, { method: "DELETE" }),
@@ -28,12 +53,18 @@ export const api = {
   sohbetAc: () => al<{ id: number }>("/api/sohbetler", { method: "POST" }),
   sohbet: (id: number) => al<{ id: number; mesajlar: Mesaj[] }>(`/api/sohbetler/${id}`),
   sohbetSil: (id: number) => al<unknown>(`/api/sohbetler/${id}`, { method: "DELETE" }),
-  oy: (govde: Record<string, unknown>) =>
-    al<unknown>("/api/oy", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(govde),
-    }),
+  oy: (govde: Record<string, unknown>) => gonder<unknown>("/api/oy", govde),
+
+  // --- yönetim (yalnızca admin; sunucu da ayrıca denetliyor) ---
+  kullanicilar: () => al<Kullanici[]>("/api/admin/kullanicilar"),
+  kullaniciAc: (govde: { kullanici: string; parola: string; ad: string; rol: string }) =>
+    gonder<{ id: number }>("/api/admin/kullanicilar", govde),
+  parolaSifirla: (id: number, parola: string) =>
+    gonder<unknown>("/api/admin/parola", { id, parola }),
+  rolDegistir: (id: number, rol: string) => gonder<unknown>("/api/admin/rol", { id, rol }),
+  kullaniciSil: (id: number) =>
+    al<unknown>(`/api/admin/kullanicilar/${id}`, { method: "DELETE" }),
+  istatistik: () => al<{ kullanicilar: KullanimSatiri[] }>("/api/admin/istatistik"),
 };
 
 /** SSE gövdesini olay olay okur. */
@@ -80,6 +111,7 @@ export async function sor(
   iptal?: AbortSignal,
 ): Promise<void> {
   const cevap = await fetch(`${KOK}/api/sor`, {
+    credentials: "include",
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(govde),
@@ -100,6 +132,7 @@ export async function sor(
 
 export async function yukle(
   dosya: File,
+  ortak: boolean,
   geri: {
     onAsama: (asama: string, i: number, n: number) => void;
     onBitti: (sonuc: YuklemeSonucu) => void;
@@ -108,13 +141,14 @@ export async function yukle(
 ): Promise<void> {
   const govde = new FormData();
   govde.append("dosya", dosya);
-  const baslangic = await fetch(`${KOK}/api/belgeler`, { method: "POST", body: govde });
+  const baslangic = await fetch(`${KOK}/api/belgeler?ortak=${ortak}`,
+                                { method: "POST", body: govde, credentials: "include" });
   if (!baslangic.ok) {
     geri.onHata(`Sunucu ${baslangic.status}`);
     return;
   }
   const { is_id } = (await baslangic.json()) as { is_id: string };
-  const akis = await fetch(`${KOK}/api/belgeler/yukleme/${is_id}`);
+  const akis = await fetch(`${KOK}/api/belgeler/yukleme/${is_id}`, { credentials: "include" });
   if (!akis.ok || !akis.body) {
     geri.onHata("Yükleme akışı açılamadı");
     return;

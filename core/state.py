@@ -70,6 +70,10 @@ class QueryState:
     # sor"). Sınıflandırıcının `document_ids` tahmininden farklı olarak bu
     # bir karar değil talimat: arama yalnızca bu belgede yapılıyor.
     scope_document_ids: list[int] = field(default_factory=list)
+    # Bu sorguyu soran kullanıcının GÖREBİLECEĞİ belgeler. None = sınır yok
+    # (tek kullanıcılı kurulum, scriptler, testler). Liste verildiğinde arama,
+    # sınıflandırıcı ve atıflar bu kümenin dışına çıkamıyor.
+    izinli_belgeler: list[int] | None = None
     scope_titles: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
 

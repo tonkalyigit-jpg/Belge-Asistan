@@ -30,7 +30,11 @@ CREATE TABLE IF NOT EXISTS documents (
     status       TEXT NOT NULL DEFAULT 'processing',
     error        TEXT,
     summary      TEXT,                    -- yükleme anında üretilen belge özeti
-    added_at     TEXT NOT NULL DEFAULT (datetime('now'))
+    added_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    -- Çok kullanıcılı kurulum: belge bir sahibe ait ve varsayılan olarak
+    -- ÖZEL. 'ortak' yalnızca admin'in yüklediği şirket geneli belgeler için.
+    owner_id     INTEGER,
+    paylasim     TEXT NOT NULL DEFAULT 'ozel'
 );
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 
@@ -73,6 +77,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     reason       TEXT,
     predicted_category TEXT,
     corrected_category TEXT,                -- 👎 + düzeltme verildiyse
+    user_id      INTEGER,
     embedding    BLOB NOT NULL,
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -85,6 +90,7 @@ CREATE INDEX IF NOT EXISTS idx_feedback_vote ON feedback(vote);
 CREATE TABLE IF NOT EXISTS conversations (
     id          INTEGER PRIMARY KEY,
     title       TEXT NOT NULL,
+    owner_id    INTEGER,                   -- sohbetler paylaşılmıyor
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -104,6 +110,33 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id);
 
+-- Kullanıcılar. Şirket içi kurulum: hesapları admin açıyor, parolalar
+-- scrypt ile saklanıyor (düz metin hiçbir yerde yok). Rol iki tane:
+--   user  — yalnızca kendi belgelerini ve ortak havuzu görür
+--   admin — hesapları yönetir ve kullanım istatistiğini görür; BAŞKASININ
+--           BELGESİNİ VE SOHBETİNİ GÖREMEZ (kural kodda, arayüzde değil)
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY,
+    username      TEXT UNIQUE NOT NULL,
+    display_name  TEXT,
+    password_hash BLOB NOT NULL,
+    salt          BLOB NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'user',
+    active        INTEGER NOT NULL DEFAULT 1,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    last_login    TEXT
+);
+
+-- Oturumlar. Çerezde duran değerin KENDİSİ değil sha256'sı saklanıyor:
+-- veritabanını okuyan biri (yedek dosyası, ekran görüntüsü) oturum çalamasın.
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash  TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
 CREATE TABLE IF NOT EXISTS traces (
     id           INTEGER PRIMARY KEY,
     query_raw    TEXT NOT NULL,
@@ -116,6 +149,7 @@ CREATE TABLE IF NOT EXISTS traces (
     rewrites     INTEGER DEFAULT 0,
     regens       INTEGER DEFAULT 0,
     steps        TEXT,                      -- JSON dizi
+    user_id      INTEGER,                   -- istatistik kullanıcı bazında
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
@@ -125,7 +159,16 @@ CREATE TABLE IF NOT EXISTS traces (
 # tabloyu değiştirmediği için, eski bir veritabanında şema scripti (özellikle
 # yeni sütuna kurulan indeks) patlıyordu. Bu tablo bağlantı açılışında sessizce
 # tamamlanıyor, yani eski DB'ler kendiliğinden uyumlu hale geliyor.
-_ADDED_COLUMNS: dict[str, list[tuple[str, str]]] = {}
+_ADDED_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    # Çok kullanıcılı sürüm: her belge ve her sohbet bir sahibe ait.
+    # `paylasim`: 'ozel' yalnızca sahibine görünür, 'ortak' herkese açık
+    # (yönetmelik, şablon gibi şirket geneli belgeler; yüklemesi admin'de).
+    "documents": [("owner_id", "INTEGER"), ("paylasim", "TEXT NOT NULL DEFAULT 'ozel'")],
+    "conversations": [("owner_id", "INTEGER")],
+    # İstatistik kullanıcı bazında: "kim kaç sorgu attı, ne kadar harcadı".
+    "traces": [("user_id", "INTEGER")],
+    "feedback": [("user_id", "INTEGER")],
+}
 
 
 def _pre_migrate(conn: sqlite3.Connection) -> None:

@@ -18,13 +18,21 @@ from core import db
 _TITLE_CHARS = 60
 
 
-def create(title: str = "") -> int:
+def create(title: str = "", owner_id: int | None = None) -> int:
     conn = db.connect()
     cur = conn.execute(
-        "INSERT INTO conversations (title) VALUES (?)", (title or "Yeni sohbet",)
+        "INSERT INTO conversations (title, owner_id) VALUES (?,?)",
+        (title or "Yeni sohbet", owner_id),
     )
     conn.commit()
     return int(cur.lastrowid)
+
+
+def sahibi(conversation_id: int) -> int | None:
+    row = db.connect().execute(
+        "SELECT owner_id FROM conversations WHERE id = ?", (conversation_id,)
+    ).fetchone()
+    return None if row is None else row["owner_id"]
 
 
 def var_mi(conversation_id: int) -> bool:
@@ -35,8 +43,21 @@ def var_mi(conversation_id: int) -> bool:
     return row is not None
 
 
-def list_all(limit: int = 60) -> list[dict]:
-    """En son konuşulan üstte."""
+def list_all(limit: int = 60, owner_id: int | None = None) -> list[dict]:
+    """En son konuşulan üstte. `owner_id` verilince yalnızca o kullanıcınınkiler.
+
+    Sohbetler kimseyle paylaşılmıyor: belge ortak havuzda olsa bile o belgeye
+    sorulan sorular soranın kendisine ait.
+    """
+    if owner_id is not None:
+        rows = db.connect().execute(
+            """SELECT c.id, c.title, c.updated_at,
+                      (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS n
+               FROM conversations c WHERE c.owner_id = ?
+               ORDER BY c.updated_at DESC LIMIT ?""",
+            (owner_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
     rows = db.connect().execute(
         """SELECT c.id, c.title, c.updated_at,
                   (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS n

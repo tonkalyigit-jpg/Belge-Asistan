@@ -18,7 +18,7 @@ def refuse(state: QueryState) -> QueryState:
     """Kibar Ret — belgelerle ilgisiz sorular ve selamlaşma."""
     state.route = Route.REFUSAL
     state.tier_used = "writer"
-    belgeler = hazir_belgeler()
+    belgeler = hazir_belgeler(state.izinli_belgeler)
     liste = "\n".join(f"- {b['title'] or b['filename']}" for b in belgeler[:12]) or "(none)"
 
     try:
@@ -50,7 +50,7 @@ def summary(state: QueryState) -> QueryState:
     """Saklı belge özetini döner. LLM çağrısı yok."""
     state.route = Route.OZET
     state.tier_used = ""
-    belgeler = {b["id"]: b for b in hazir_belgeler()}
+    belgeler = {b["id"]: b for b in hazir_belgeler(state.izinli_belgeler)}
 
     if not belgeler:
         state.answer = no_documents_message(state.lang)

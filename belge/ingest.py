@@ -66,7 +66,8 @@ def pdf_bytes(document_id: int) -> bytes | None:
     return path.read_bytes() if path.exists() else None
 
 
-def yukle(data: bytes, filename: str, *, on_progress: Ilerleme | None = None) -> YuklemeSonucu:
+def yukle(data: bytes, filename: str, *, on_progress: Ilerleme | None = None,
+          owner_id: int | None = None, paylasim: str = "ozel") -> YuklemeSonucu:
     started = time.perf_counter()
     bildir = on_progress or (lambda *_: None)
     sonuc = YuklemeSonucu(document_id=None, filename=filename, status="failed")
@@ -93,9 +94,14 @@ def yukle(data: bytes, filename: str, *, on_progress: Ilerleme | None = None) ->
     sha = hashlib.sha256(data).hexdigest()
 
     # --- tekrar yükleme --------------------------------------------------
+    # TEKRAR KONTROLÜ KULLANICI BAZINDA. sha256 tekil olduğu için aynı PDF'i
+    # ikinci bir kullanıcı yüklediğinde "zaten yüklü" deyip BAŞKASININ
+    # belgesine bağlıyorduk — kullanıcı belgesini göremiyor, üstelik başka
+    # birinin kaydına erişmiş oluyordu. Artık tekrar yalnızca aynı sahip için.
     var = conn.execute(
-        "SELECT id, title, status, page_count, ocr_pages, summary FROM documents WHERE sha256 = ?",
-        (sha,),
+        """SELECT id, title, status, page_count, ocr_pages, summary FROM documents
+           WHERE sha256 = ? AND (owner_id IS ? OR owner_id = ?)""",
+        (sha, owner_id, owner_id),
     ).fetchone()
     if var is not None and var["status"] in ("ready", "processing"):
         sonuc.document_id = var["id"]
@@ -106,14 +112,21 @@ def yukle(data: bytes, filename: str, *, on_progress: Ilerleme | None = None) ->
         sonuc.ocr_pages = var["ocr_pages"]
         sonuc.warnings.append("Bu dosya daha önce yüklenmiş, yeniden işlenmedi")
         return sonuc
+    if var is None:
+        # Aynı içerik BAŞKA bir sahipte olabilir; sha256 sütunu tekil olduğu
+        # için kendi kaydımıza sahip ekli bir anahtar yazıyoruz.
+        baska = conn.execute("SELECT 1 FROM documents WHERE sha256 = ?", (sha,)).fetchone()
+        if baska:
+            sha = f"{sha}:u{owner_id}"
     if var is not None:
         # Daha önce başarısız olmuş ya da silinmiş: temiz bir kayıtla yeniden dene.
         conn.execute("UPDATE documents SET sha256 = ? WHERE id = ?", (f"{sha}:eski:{var['id']}", var["id"]))
         conn.commit()
 
     cur = conn.execute(
-        "INSERT INTO documents (sha256, filename, page_count, status) VALUES (?,?,?, 'processing')",
-        (sha, filename, sayfa_sayisi),
+        "INSERT INTO documents (sha256, filename, page_count, status, owner_id, paylasim) "
+        "VALUES (?,?,?, 'processing', ?, ?)",
+        (sha, filename, sayfa_sayisi, owner_id, paylasim),
     )
     conn.commit()
     doc_id = cur.lastrowid
@@ -257,9 +270,24 @@ def yeniden_parcala(document_id: int) -> int:
                               pdfmod.chunk_pages(sayfalar))
 
 
-def listele() -> list[dict]:
-    rows = db.connect().execute(
-        """SELECT id, filename, title, page_count, ocr_pages, status, error, summary, added_at
-           FROM documents WHERE status != 'deleted' ORDER BY id DESC"""
-    ).fetchall()
+def listele(owner_id: int | None = None, *, hepsi: bool = False) -> list[dict]:
+    """Belgeler. `owner_id` verilince yalnızca o kullanıcınınkiler + ortak havuz.
+
+    `hepsi=True` yalnızca bakım scriptleri için (yeniden parçalama, ölçüm).
+    Arayüz her zaman bir sahip vererek çağırıyor.
+    """
+    alanlar = ("id, filename, title, page_count, ocr_pages, status, error, "
+               "summary, added_at, owner_id, paylasim")
+    conn = db.connect()
+    if owner_id is None or hepsi:
+        rows = conn.execute(
+            f"SELECT {alanlar} FROM documents WHERE status != 'deleted' ORDER BY id DESC"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            f"""SELECT {alanlar} FROM documents
+                WHERE status != 'deleted' AND (owner_id = ? OR paylasim = 'ortak')
+                ORDER BY id DESC""",
+            (owner_id,),
+        ).fetchall()
     return [dict(r) for r in rows]

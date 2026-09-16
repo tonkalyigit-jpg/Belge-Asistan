@@ -961,3 +961,252 @@ button {
   .pnokta { animation: none; }
   .eylemler button, .satir-sil, .kenar, .katlanir .ok, .panel .ok { transition: none; }
 }
+
+/* --- giriş ekranı -------------------------------------------------- */
+/* Tek iş yapan bir ekran: ortada, dar, başka hiçbir şey yok. Kayıt bağlantısı
+   YOK — hesapları yönetici açıyor ve bunu ekran da söylüyor. */
+.giris-ekran {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+.giris-kutu {
+  width: 100%;
+  max-width: 24rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--panel) 0%, var(--ink) 120%);
+  padding: 1.6rem 1.5rem 1.4rem;
+}
+.giris-kutu .manset { margin-bottom: 1.4rem; }
+.giris-kutu .manset h1 { font-size: 1.5rem; }
+.giris-hata {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--warn);
+  margin: 0 0 0.6rem;
+}
+.giris-dugme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 44px;
+  border-radius: 6px;
+  border: 1px solid var(--signal-d);
+  background: rgba(233, 168, 92, 0.12);
+  color: var(--signal);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+.giris-dugme:hover:not(:disabled) { background: rgba(233, 168, 92, 0.2); }
+.giris-dugme:disabled { color: var(--muted); border-color: var(--line); cursor: not-allowed; }
+.giris-not {
+  font-family: var(--serif);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 1rem 0 0;
+}
+
+/* Form alanı — giriş, yönetim ve parola formlarında ortak. */
+.alan { display: block; margin-bottom: 0.9rem; }
+.alan > span {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+.alan input, .alan select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+.alan input:focus, .alan select:focus {
+  outline: none;
+  border-color: var(--signal-d);
+}
+.alan input:focus-visible, .alan select:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* --- kenar çubuğu: hesap ------------------------------------------- */
+.hesap { display: flex; flex-direction: column; gap: 0.3rem; }
+.hesap-ad {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--paper);
+  padding: 0.2rem 0.2rem 0.5rem;
+}
+.hesap-ad strong { display: block; font-weight: 500; }
+.hesap-rol {
+  display: block;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hesap-dugme {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 40px;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.hesap-dugme:hover { background: var(--panel); color: var(--paper); }
+
+.ortak-secim {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-content: center;
+  margin-top: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.ortak-secim input { accent-color: var(--signal); }
+/* Ortak havuzdaki belge listede işaretli: kullanıcı kendi belgesiyle şirket
+   belgesini karıştırmasın (birini silebilir, diğerini silemez). */
+.ortak-rozet {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--signal-d);
+  border-radius: 2px;
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  color: var(--signal);
+  vertical-align: middle;
+}
+
+/* --- yönetim paneli ------------------------------------------------ */
+.yonetim { padding-bottom: 2rem; }
+.yonetim-bas { display: flex; align-items: center; justify-content: space-between; }
+.yonetim-bas h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.5rem;
+  color: var(--paper);
+  margin: 0;
+}
+.yonetim-baslik {
+  font-family: var(--mono);
+  font-size: 0.63rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--signal);
+  margin: 1.6rem 0 0.7rem;
+}
+.ikon-dugme {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.ikon-dugme:hover { color: var(--paper); background: var(--panel); }
+.ikon-dugme.sil:hover { color: var(--warn); }
+
+.yeni-hesap, .satir-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0 0.8rem;
+  align-items: end;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.9rem 1rem 0.2rem;
+  background: var(--panel);
+}
+.satir-form { margin-top: 1rem; align-items: end; }
+.yeni-hesap button, .satir-form button {
+  min-height: 40px;
+  margin-bottom: 0.9rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--paper);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+.yeni-hesap button.birincil, .satir-form button.birincil {
+  border-color: var(--signal-d);
+  background: rgba(233, 168, 92, 0.12);
+  color: var(--signal);
+}
+.yeni-hesap button:hover, .satir-form button:hover { border-color: var(--signal-d); }
+
+.yonetim-tablo {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+.yonetim-tablo th {
+  text-align: left;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--signal);
+  border-bottom: 1px solid var(--signal-d);
+  padding: 0.4rem 0.6rem 0.4rem 0;
+  white-space: nowrap;
+}
+.yonetim-tablo td {
+  padding: 0.5rem 0.6rem 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--paper);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.yonetim-tablo strong { font-weight: 500; }
+.kullanici-adi { display: block; color: var(--muted); font-size: 0.66rem; }
+.yonetim-tablo select {
+  background: var(--panel-2);
+  color: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  min-height: 32px;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  padding: 0 0.3rem;
+}
+.eylem-hucre { display: flex; gap: 0.2rem; }
+.silme-onay {
+  margin-top: 1rem;
+  border: 1px solid #5b322c;
+  border-radius: 8px;
+  padding: 0.3rem 0.8rem 0.8rem;
+  background: rgba(217, 122, 108, 0.06);
+}
+.yukleniyor { min-height: 100vh; background: var(--ink); }
