@@ -1,0 +1,208 @@
+# Belge Asistanı — merkezi yapılandırma
+#
+# Model ve sağlayıcı kararı yalnızca `tiers` bloğunda. Gemini ücretsiz API'den
+# local bir modele geçmek kodda hiçbir değişiklik gerektirmiyor: `openai_compat`
+# vLLM ve Ollama'yı da kapsıyor (base_url · model · api_key_env).
+#
+# UYARI — "ÖLÇÜLECEK" işaretli eşikler Network Asistanı'ndan taşındı ve orada
+# İNGİLİZCE bir korpusta, çevrilmiş sorgularla ölçüldü. Burada hem belgeler hem
+# sorular Türkçe; cosine dağılımı farklıdır. Türkçe belgelerle yeniden
+# ölçülene kadar bu değerler varsayımdır, karar değildir.
+
+# Dört kademe:
+#   cheap  -> KONTROL DÜZLEMİ: sınıflandırıcı, puanlayıcı, yeniden yazıcı,
+#             halüsinasyon/yeterlilik denetçisi. JSON üretir.
+#   writer -> kullanıcıya giden metin, kolay sorular.
+#   strong -> kullanıcıya giden metin, zor sorular, çapraz belge sentezi ve
+#             yükleme anındaki belge özeti.
+#   vision -> taranmış sayfayı metne çevirir (OCR). Ayrı kademe, çünkü local'e
+#             geçerken metin modeliyle görsel model büyük olasılıkla farklı olacak.
+tiers:
+  cheap:
+    provider: openai_compat
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    model: gemini-3.5-flash-lite
+    price_in: 0.0            # ücretsiz katman: 15 RPM · 250K TPM · 1.000 istek/gün
+    price_out: 0.0
+    max_tokens: 2048
+    temperature: 0
+    # Flash-Lite, Flash değil: Network Asistanı'nda canlı ölçüldü (2026-08-31).
+    # Flash modelleri "thinking" token'larını max_tokens'ın içinden yiyip boş
+    # içerik döndürüyordu; Flash-Lite'ta bu davranış yok.
+    #
+    # UYARI: Gemini ücretsiz katmanında gönderilen içerik Google'ın ürünlerini
+    # geliştirmek için kullanılabiliyor. Gerçek kurumsal evrakla çalışmadan önce
+    # local modele geçilmeli.
+
+  writer:
+    provider: openai_compat
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    model: gemini-3.5-flash-lite
+    price_in: 0.0
+    price_out: 0.0
+    # 2048 DEĞİL: cevabın uzunluğu artık soruya bağlı ("detaylı anlat" uzun
+    # cevap demek) ve Türkçe metin token başına daha az kelime taşıyor. 2048
+    # token ~800 kelimede cümlenin ortasında kesilme riski taşıyordu.
+    max_tokens: 4096
+    temperature: 0
+
+  strong:
+    provider: openai_compat
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    model: gemini-3.5-flash-lite
+    price_in: 0.0
+    price_out: 0.0
+    max_tokens: 4096
+    temperature: 0
+
+  vision:
+    provider: openai_compat
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    model: gemini-3.5-flash-lite
+    price_in: 0.0
+    price_out: 0.0
+    max_tokens: 4096          # yoğun bir A4 sayfası ~1.000-1.500 token
+    temperature: 0
+    timeout: 90
+    # Sayfa okuma toplu bir iş: kullanıcı ekrana bakmıyor, hız sınırına takılan
+    # bir sayfanın sohbetin 90 sn'lik bütçesiyle vazgeçip belgeyi eksik
+    # bırakması daha kötü. 15 RPM'de bir 429 beklemesi ~60 sn sürebiliyor.
+    max_wall_seconds: 240
+    max_retries: 6
+
+paths:
+  db: data/belge-asistan.db
+  index_dir: data/index
+  belgeler_dir: data/belgeler   # yüklenen PDF'lerin kendisi (sayfa görüntüsü için)
+
+network:
+  force_ipv4: true             # yarım çalışan IPv6'da ilk istek 77 sn sürüyordu
+
+embedding:
+  model: BAAI/bge-m3           # çok dilli; Türkçe belge + Türkçe soru için uygun
+  dim: 1024
+  device: auto                 # auto | mps | cuda | cpu
+  dtype: auto                  # auto | float16 | float32
+  batch_size: 16
+  query_prefix: ""             # bge-m3 prefix istemiyor
+  max_seq_length: 1024
+
+# --- belge alma ----------------------------------------------------------
+belge:
+  max_upload_mb: 100
+  max_pages: 300
+  # Metin katmanından bu kadar harften az çıkan sayfa taranmış sayılır ve
+  # OCR'a gider. Dijital bir sayfada başlık bile bunun üstünde çıkar. ÖLÇÜLECEK.
+  min_chars_per_page: 60
+  ocr_dpi: 200                 # sayfa görüntüsü çözünürlüğü
+  preprocess: true             # taranmış sayfada eğrilik düzeltme + kontrast
+  #
+  # ÖLÇÜLDÜ 2026-09-14 (scripts/ocr_olc.py, gemini-3.5-flash-lite, 3 belge, 7 sayfa):
+  #
+  #   tür            ön işleme            CER      WER     Türkçe işaret kaybı
+  #   dijital PDF    (metin katmanı)      0.00%     —        —
+  #   temiz tarama   yok                  0.02%    0.13%    0.00%
+  #   temiz tarama   eğiklik+kontrast     0.03%    0.13%    0.00%
+  #   kötü tarama    yok                  0.07%    0.24%    0.00%
+  #   kötü tarama    eğiklik              0.09%    0.39%    0.00%
+  #   kötü tarama    eğiklik+kontrast     0.11%    0.39%    0.00%
+  #   kötü tarama    +medyan filtre       0.07%    0.27%    0.00%
+  #
+  # GEMİNİ İLE ÖN İŞLEMENİN ÖLÇÜLEBİLİR ETKİSİ YOK. Farklar 1-3 karakter ve
+  # hepsi AYNI hatanın koşudan koşuya dalgalanması: binde işareti (‰5 -> %5).
+  # 42 okumadaki tek hata türü buydu; prompt'a ‰/% farkı eklendi ve kesin
+  # hatalı biçimler (%o5, ‰o5) belge/ocr.py'de düzeltiliyor.
+  #
+  # Yine de açık: kötü taramada zarar vermiyor, ve local'e geçişte daha küçük
+  # bir görsel model ya da klasik OCR kullanılırsa etkisi büyük olasılıkla
+  # ortaya çıkacak. O gün yeniden ölçülmeli.
+  #
+  # SINIR: örnekler SENTETİK — tek font, gerçek hayattaki kaşe, el notu, katlanma
+  # izi, telefonla çekilmiş perspektifli fotoğraf yok. Bu tablo hattın çalıştığını
+  # gösteriyor, gerçek evrakta %99.9 doğruluk vaat etmiyor.
+
+chunking:
+  # Network Asistanı'nda ölçülen değerler (İngilizce makale). ÖLÇÜLECEK.
+  chunk_chars: 2400            # ≈ 600 token, BGE-M3'ün 1024 token sınırının altında
+  chunk_overlap_chars: 300
+  min_chunk_chars: 200
+
+ozet:
+  # Belge bu kadar karakteri aşarsa önce pencere pencere özetlenip sonra
+  # birleştiriliyor. Gemini'nin bağlamı çok daha büyük, ama local modele
+  # geçişte 8-32K bağlam olacak; tasarım baştan ona göre.
+  window_chars: 24000
+
+retrieval:
+  top_k: 8                     # bağlama alınacak chunk sayısının ALT sınırı
+  # BAĞLAM SAYIYLA DEĞİL KARAKTERLE ÖLÇÜLÜYOR.
+  #
+  # "8 chunk" sözleşmelere göre ayarlanmış bir sayıydı ve orada belgenin yarısı
+  # demekti. ÖLÇÜLDÜ (EMAT ders notu, 52 sayfa, 89 chunk, ortalama 585 karakter):
+  # aynı 8 chunk belgenin yalnızca %9'unu (933 token) bağlama alıyordu ve
+  # "daha detaylı anlat" dendiğinde modelin elinde anlatacak yeni bir şey
+  # olmuyordu. Chunk boyutu belgeden belgeye 150-600 karakter arasında
+  # değiştiği için sabit sayı, sabit bir bağlam anlamına gelmiyor.
+  #
+  # Artık chunk'lar alaka sırasına göre bu karakter bütçesi dolana kadar
+  # alınıyor: top_k alt sınır, max_chunks üst sınır. Sözleşmelerde davranış
+  # değişmiyor (8 chunk zaten bütçenin çok altında), parçalı belgelerde
+  # bağlam 3-4 katına çıkıyor.
+  context_chars: 12000         # ≈ 3K token
+  max_chunks: 24               # puanlama maliyetinin üst sınırı
+  # Sınıflandırıcı "kapsam dışı" dediğinde son kontrol: soru belgelerin gövde
+  # parçalarına bu kadar benziyorsa ret iptal edilip aranıyor. ÖLÇÜLDÜ:
+  # belgede karşılığı olan sorular 0.66-0.72, gerçekten kapsam dışı olanlar
+  # 0.35-0.46. Eşik aradaki boşlukta.
+  kapsam_disi_esigi: 0.50
+  # Puanlayıcı elese bile bağlamda kalacak benzerlik eşiği. Puanlayıcının
+  # kararı gürültülü (aynı soruda 24/9/3 alakalı); bu eşik cevabın kapsamını
+  # tek bir ucuz model çağrısının keyfine bırakmıyor.
+  kesin_alaka: 0.60
+  candidate_k: 20              # her aramadan (dense/bm25) alınan aday
+  rrf_k: 60
+  # Puanlayıcıya gitmeden önceki ucuz eleme. Network Asistanı'nda 0.50
+  # ölçülmüştü ama İngilizce korpusta. Kasıtlı olarak düşük: alaka kararını
+  # zaten puanlayıcı veriyor, düşük taban yalnızca biraz daha fazla puanlama
+  # token'ı demek. ÖLÇÜLECEK.
+  score_floor: 0.35
+  min_relevant: 2              # bu kadar alakalı chunk yoksa rewrite
+  max_chunks_per_document: 3   # tek belge tüm sonuçları doldurmasın
+  grade_snippet_chars: 2000
+  citation_snippet_chars: 1200
+  # Çapraz belge sentezi: her belge kendi içinde ayrı aranıyor, böylece
+  # karşılaştırmaya her belge temsil edilerek giriyor. Ortak havuzdan arama
+  # en benzer belgeye çöküp diğerlerini dışarıda bırakabiliyor.
+  capraz_per_document: 3
+  capraz_max_documents: 8
+  # Karşılaştırılan belgelerin toplam metni bunun altındaysa arama yapılmıyor,
+  # belgelerin TAMAMI okunuyor. Uygunluk kontrolünde hangi maddenin
+  # karşılaştırılacağı önceden bilinmiyor; kısmi okuma ikinci ihlali kaçırıp
+  # "belgede yok" diye YANLIŞ bir cevap üretmişti. 24.000 karakter ≈ 6-7K
+  # token: local modele geçişte 16K bağlamda cevaba da yer bırakıyor.
+  capraz_full_context_chars: 24000
+  # Soru belirli bir belgeyi anıyorsa (ya da sohbet ona odaklıysa) ve belge bu
+  # sınırın altındaysa tamamı okunuyor. Sözleşmede cevabın girdileri farklı
+  # maddelerde duruyor (ceza Madde 5, bedel Madde 3); arama birini kaçırınca
+  # model hesap yapamadı. ≈ 4-5K token.
+  single_full_context_chars: 16000
+
+routing:
+  difficulty_threshold: 4
+  context_token_threshold: 2500
+  always_strong_categories: [capraz_belge]
+
+limits:
+  max_rewrites: 2
+  max_regen: 1                 # halüsinasyon + yeterlilik için ortak bütçe
+  max_cost_usd_per_query: 0.05
+  max_wall_seconds: 90
+  regenerate_temperature: 0.35
+
+feedback:
+  fewshot_pool_size: 5
+  fewshot_min_similarity: 0.55

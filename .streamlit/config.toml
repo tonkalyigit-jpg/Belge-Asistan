@@ -1,0 +1,37 @@
+# Tema burada tanımlı, app.py'de değil: Streamlit kendi bileşenlerini
+# (chat balonu, expander, buton, input) bu değerlerle boyuyor. CSS ile
+# üzerine yazmak sürüm değişimlerinde kırılgan; taban renkleri temadan
+# vermek, yalnızca tipografi ve özel bileşenleri CSS'e bırakmak daha sağlam.
+
+[theme]
+base = "dark"
+primaryColor = "#E9A85C"           # sinyal: bakır/amber — tek vurgu rengi
+backgroundColor = "#0C0E11"        # mürekkep
+secondaryBackgroundColor = "#14171C"
+textColor = "#E6E1D7"              # kâğıt kremi
+linkColor = "#E9A85C"
+codeBackgroundColor = "#171B21"
+
+font = "serif"
+headingFont = "serif"
+codeFont = "monospace"
+
+borderColor = "#242A33"
+showWidgetBorder = true
+baseRadius = "small"
+
+[client]
+toolbarMode = "minimal"
+
+[server]
+headless = true
+# config/settings.yaml belge.max_upload_mb ile aynı olmalı; Streamlit
+# varsayılanı 200 MB yazıyor ve kullanıcıya yanlış sınır gösteriyordu.
+maxUploadSize = 100
+
+# Dosya izleyicisi kapalı. Varsayılan izleyici, yüklü HER modülün yolunu
+# tarıyor ve `transformers` gibi tembel yükleyen paketlerde bu, her taramada
+# import denemesi + hata izi üretiyor (log'da 202 kez görüldü). Bize faydası
+# yok: uygulamayı zaten elle yeniden başlatıyoruz. Kapatmak hem gürültüyü
+# hem de izleyicinin tetiklediği gereksiz yeniden koşumları kaldırıyor.
+fileWatcherType = "none"
