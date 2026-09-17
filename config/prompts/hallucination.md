@@ -22,6 +22,12 @@ damages mathematics: `p x 2 + y 2` is √(x² + y²), `~a_x` is the unit vector 
 source, not inventing. Flag a formula only when it says something different
 from the source — a changed operator, term, sign or index.
 
+**A claim introduced as general knowledge is unsupported.** "Genel bilgilere
+göre…", "bilindiği üzere…", "genel olarak…" followed by a fact that is not in
+the sources — a date, a version, a company, a number — is `grounded: false`,
+however honestly it is labelled. The assistant answers from the documents;
+saying where an invention came from does not make it sourced.
+
 Be exact about numbers. Flag these even though they look close:
 
 - an amount, percentage, duration or date that differs from the source in any

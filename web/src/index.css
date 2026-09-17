@@ -485,6 +485,7 @@ button {
   padding: 0.45rem 0.6rem;
   margin: 0.2rem 0.3rem 0.2rem 0;
   text-align: left;
+  min-height: 36px;        /* örnek soru çipleri de dokunma hedefi */
 }
 .cips:hover { border-color: var(--signal-d); }
 .cips b { color: var(--signal); font-weight: 400; }
@@ -934,6 +935,9 @@ button {
   .satir-ad, .yeni-sohbet, .belge-bilgi .odak-dugme { min-height: 44px; }
   .odak-cip, .kip-hap { height: 44px; }
   .sayfa-dugmeler button { min-height: 44px; }
+  .ortak-secim { min-height: 44px; }
+  .cips { min-height: 44px; }
+  .alan input, .alan select { min-height: 44px; }
 }
 
 /* --- dar ekran ---------------------------------------------------- */
@@ -1140,7 +1144,9 @@ button {
   color: var(--muted);
   cursor: pointer;
 }
-.ortak-secim input { accent-color: var(--signal); }
+/* Varsayılan onay kutusu 13x13 — dokunma hedefi olarak küçük. Kutu büyüyor,
+   etiketin tamamı zaten tıklanabilir ve dokunmatik ekranda satır 44px. */
+.ortak-secim input { accent-color: var(--signal); width: 18px; height: 18px; }
 /* Ortak havuzdaki belge listede işaretli: kullanıcı kendi belgesiyle şirket
    belgesini karıştırmasın (birini silebilir, diğerini silemez). */
 /* Liste altındaki açıklama: bölümün ne olduğunu bir cümleyle söylüyor. */
