@@ -27,6 +27,23 @@ def run(state: QueryState) -> QueryState:
         state.graded_hits = []
         return state
 
+    # BENZERLİĞİ KESİN OLANLAR PUANLAYICIYA HİÇ GİTMİYOR.
+    #
+    # Bu parçalar puanlayıcı "alakasız" dese bile bağlamda kalıyor (aşağıdaki
+    # kural). Yani onlar için harcanan girdi token'ı ve bekleme, sonucu
+    # değiştirmeyen bir iş. ÖLÇÜLDÜ: puanlama medyan 2.08 sn ve toplam sürenin
+    # %19'u; gönderilen pasajların çoğu zaten eşiğin üstünde.
+    kesin_esik = float(config.get("retrieval.kesin_alaka", 0.60))
+    kesinler = [h for h in candidates if h.dense_score >= kesin_esik]
+    belirsizler = [h for h in candidates if h.dense_score < kesin_esik]
+
+    if not belirsizler:
+        state.graded_hits = sorted(kesinler, key=lambda h: -h.dense_score)
+        state.note(f"{len(kesinler)} chunk'ın hepsi benzerlik eşiğinin üstünde "
+                   f"(≥{kesin_esik:.2f}); puanlayıcı çalıştırılmadı")
+        return state
+
+    candidates = belirsizler
     provider = registry.tier("cheap")
     # Kesme sınırı bilinçli olarak cömert. 900 karakterde kesildiğinde
     # abstract'ların %84'ü kırpılıyor ve puanlayıcının gördüğü metnin %30'u
@@ -63,6 +80,7 @@ def run(state: QueryState) -> QueryState:
         # üretim düğümü zaten groundedness kontrolünden geçecek.
         state.note(f"Pasaj puanlama başarısız, cosine sıralaması kullanıldı: {exc}")
         state.low_confidence = True
+        candidates = kesinler + candidates
         # `top_k` ile kesilmiyor: kaç chunk'ın bağlama gireceğine karakter
         # bütçesiyle retrieve karar verdi. Burada yeniden kesmek, puanlayıcı
         # çöktüğü için bağlamı da daraltmak olurdu.
@@ -85,7 +103,7 @@ def run(state: QueryState) -> QueryState:
 
     if not grades:
         state.note("Puanlayıcı boş sonuç döndürdü, cosine sıralaması kullanıldı")
-        state.graded_hits = candidates
+        state.graded_hits = kesinler + candidates
         return state
 
     kept = [
@@ -95,7 +113,8 @@ def run(state: QueryState) -> QueryState:
     for hit, score in kept:
         hit.fused_score = score
 
-    state.graded_hits = [hit for hit, _ in kept]
+    # Eşiğin üstündekiler başa: en yüksek güvenli parçalar önce.
+    state.graded_hits = sorted(kesinler, key=lambda h: -h.dense_score) + [hit for hit, _ in kept]
 
     # PUANLAYICI TEK KARAR VERİCİ DEĞİL.
     #
@@ -110,17 +129,10 @@ def run(state: QueryState) -> QueryState:
     # olan sorularda en iyi parçalar 0.60-0.72, konuyla ilgisiz sorularda
     # 0.35-0.46 veriyor. Puanlayıcının işi sürüyor — sıralamayı ve "hiç alaka
     # yok, sorguyu yeniden yaz" kararını hâlâ o veriyor.
-    kesin = float(config.get("retrieval.kesin_alaka", 0.60))
-    elenen = [h for h in candidates
-              if h not in state.graded_hits and h.dense_score >= kesin]
-    if elenen:
-        state.graded_hits += sorted(elenen, key=lambda h: -h.dense_score)
-        state.note(
-            f"{len(elenen)} chunk puanlayıcıda elendi ama benzerliği yüksek "
-            f"(≥{kesin:.2f}); bağlamda tutuldu"
-        )
-
-    state.note(f"{len(state.graded_hits)}/{len(candidates)} chunk alakalı bulundu")
+    if kesinler:
+        state.note(f"{len(kesinler)} chunk benzerlik eşiğinin üstünde olduğu için "
+                   f"puanlayıcıya gönderilmeden bağlama alındı (≥{kesin_esik:.2f})")
+    state.note(f"{len(kept)}/{len(candidates)} belirsiz chunk alakalı bulundu")
     return state
 
 

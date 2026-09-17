@@ -133,6 +133,9 @@ export const ADIM: Record<string, [string, string]> = {
   calculation_check: ["Hesap denetimi", "Cevaptaki hesaplar yazılımla yeniden yapıldı"],
   hallucination_check: ["Kaynak doğrulaması", "Her ifadenin belgede karşılığı var mı bakıldı"],
   sufficiency_check: ["Yeterlilik kontrolü", "Cevap soruyu gerçekten karşılıyor mu bakıldı"],
+  // İki denetçi aynı anda koşuyor; izde de tek adım olarak görünüyorlar.
+  verification: ["Cevap denetlendi",
+    "Her ifadenin belgede karşılığı var mı ve cevap soruyu karşılıyor mu — ikisi birden"],
   refusal: ["Kibar ret", "Soru yüklenen belgelerle ilgili olmadığı için cevaplanmadı"],
   summary: ["Saklı özet", "Yükleme sırasında çıkarılan özet getirildi, model çalışmadı"],
 };
