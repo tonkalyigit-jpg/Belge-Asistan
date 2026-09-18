@@ -164,6 +164,7 @@ export const KATEGORI_DUZ: Record<string, string> = {
 
 export const YUKLEME_ASAMA: Record<string, string> = {
   ocr: "taranmış sayfa okunuyor",
+  gorsel: "şekiller görselden okunuyor",
   ozet: "özet çıkarılıyor",
   indeks: "indeksleniyor",
 };

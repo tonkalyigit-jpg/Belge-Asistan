@@ -303,6 +303,22 @@ def run(
                     if state.scope_document_ids else "")
             state.answer = state.answer.rstrip() + onek + ipucu
 
+    # ODAK HER YOLDA SÖYLENİYOR.
+    #
+    # Kullanıcı "yalnızca bu belge" dediğinde cevabın kapsamı daralıyor ve bu
+    # cevabın kendisinde yazmalı — ekrandaki çip yalnızca GÜNCEL durumu
+    # gösteriyor, geçmişe kaydırılan cevapta yok. ÖLÇÜLDÜ: odaklıyken
+    # "Kubernetes desteği var mı?" sorusunun cevabı doğruydu ama aramanın tek
+    # belgeyle sınırlı olduğunu söylemiyordu; okuyan "hiçbir belgede yok"
+    # sanabilirdi. Tam okuma yolunda not zaten vardı, arama yolunda yoktu.
+    if (state.scope_document_ids and state.route == Route.RAG
+            and not state.service_error
+            and "yalnızca" not in state.answer.lower()):
+        adlar = ", ".join(state.scope_titles) or "odaklanılan belge"
+        state.answer = state.answer.rstrip() + (
+            f"\n\n_Arama yalnızca **{adlar}** belgesinde yapıldı; "
+            f"diğer belgelere bakılmadı._")
+
     # Sorun giderildiyse bunu da yaz: iz yalnızca "taslak yetersiz" dediğinde
     # okuyan kişi bunu ekrandaki cevaba dair bir hüküm sanıyordu.
     if state.regens and state.grounded is not False and state.sufficient is not False:

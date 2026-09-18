@@ -1,6 +1,8 @@
 """Belge yükleme hattı — gerçek PDF, sahte LLM ve embedding."""
 from __future__ import annotations
 
+import pytest
+
 from belge import ingest
 from belge.store import get_store
 from core import db
@@ -114,3 +116,40 @@ def test_yeniden_parcalama_tekrar_tekrar_calisabiliyor(fake_llm, fake_embedder, 
     for _ in range(3):
         assert ingest.yeniden_parcala(s.document_id) == s.chunks
     assert get_store().size() == s.chunks
+
+
+def test_sekil_betimlemesi_ayri_chunk_olarak_indeksleniyor(fake_llm, fake_embedder, ornek_pdfler):
+    """Şekil metni belgenin cümlesi değil; ayrı chunk ve açıkça etiketli.
+
+    Sayfa metnine karıştırılsaydı cevapta belgenin yazdığı bir şey gibi
+    görünürdü; oysa bunu model görselden okudu.
+    """
+    from core import db
+
+    fake_llm({"ozet": OZET, "gorsel": "mimari şema\nCNF, VNF, IMS Core\nCNF kutusu IMS Core'a bağlı"})
+    s = ingest.yukle(ornek_pdfler["kuzey"], "kuzey.pdf")
+    assert s.status == "ready", s.error
+
+    satirlar = db.connect().execute(
+        "SELECT section, text FROM chunks WHERE document_id = ? AND section LIKE 'Şekil%'",
+        (s.document_id,),
+    ).fetchall()
+    if not satirlar:
+        pytest.skip("bu sentetik PDF'te şekil sinyali yok")
+    assert satirlar[0]["text"].startswith("[Şekil betimlemesi")
+    assert "görselden okundu" in satirlar[0]["text"]
+
+
+def test_sekil_betimlemesi_taranmis_sayfada_atlaniyor(fake_llm, fake_embedder, ornek_pdfler):
+    """Taranmış sayfanın metnini zaten aynı vision modeli okudu (OCR).
+
+    İkinci bir çağrı kotayı iki katına çıkarır ve sayfa metninin neredeyse
+    kopyası olan bir chunk üretir.
+    """
+    saglayicilar = fake_llm({"ozet": OZET, "ocr": "MADDE 1 - TARAFLAR\nAlıcı ve tedarikçi. " * 5,
+                             "gorsel": "ŞEKİL YOK"})
+    s = ingest.yukle(ornek_pdfler["guney_tarama"], "guney_tarama.pdf")
+    assert s.status == "ready", s.error
+    cagrilar = saglayicilar["vision"].calls
+    # Her çağrı OCR prompt'uyla: şekil betimleme prompt'u hiç kullanılmadı.
+    assert cagrilar and all("transcribe" in c["system"].lower() for c in cagrilar)

@@ -68,6 +68,18 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(document_id);
 
+-- Sayfa şekillerinin model tarafından yazılmış betimlemeleri.
+-- AYRI TABLO, çünkü bu metin belgenin kendi cümlesi DEĞİL: modelin görselden
+-- okuduğu şey. Ayrıca saklanıyor ki yeniden parçalama vision çağrılarını
+-- tekrarlamasın (sayfa başına bir çağrı, kota ve süre).
+CREATE TABLE IF NOT EXISTS figures (
+    document_id  INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    page_no      INTEGER NOT NULL,
+    text         TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (document_id, page_no)
+);
+
 -- Kullanıcı geri bildirimi + few-shot düzeltme havuzu
 CREATE TABLE IF NOT EXISTS feedback (
     id           INTEGER PRIMARY KEY,

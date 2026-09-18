@@ -25,7 +25,7 @@ import config
 from core import db
 from llm.base import LLMError
 
-from . import ocr, ozet
+from . import gorsel, ocr, ozet
 from . import pdf as pdfmod
 from .store import get_store
 
@@ -179,9 +179,20 @@ def yukle(data: bytes, filename: str, *, on_progress: Ilerleme | None = None,
             sonuc.title = filename.rsplit(".", 1)[0].replace("_", " ")
             sonuc.warnings.append(f"Özet üretilemedi, belge özetsiz indekslendi: {exc}")
 
+        # --- şekiller ------------------------------------------------------
+        # Metin çıkarımının göremediği kısım: şemadaki oklar, grafikteki
+        # eksenler ve gömülü görsellerin İÇİNDEKİ yazı. Betimleme veritabanına
+        # yazılıyor; yeniden parçalama bunları tekrar üretmiyor.
+        if config.get("belge.gorsel_betimleme", True):
+            # TARANMIŞ SAYFALAR HARİÇ: orada metni zaten aynı vision modeli
+            # okudu (OCR). İkinci bir çağrı hem kotayı iki katına çıkarır hem
+            # de sayfa metninin neredeyse kopyası olan bir chunk üretir.
+            _sekilleri_betimle(doc_id, data, bildir, sonuc,
+                               atla={p.page_no for p in sayfalar if p.source == "ocr"})
+
         # --- indeks --------------------------------------------------------
         bildir("indeks", 1, 1)
-        parcalar = pdfmod.chunk_pages(sayfalar)
+        parcalar = pdfmod.chunk_pages(sayfalar) + _sekil_parcalari(doc_id, len(sayfalar))
         sonuc.chunks = get_store().add_document(doc_id, sonuc.title, sonuc.summary, parcalar)
 
         conn.execute(
@@ -266,8 +277,65 @@ def yeniden_parcala(document_id: int) -> int:
         ozet = ozet.split("\n", 1)[1].strip() if "\n" in ozet else ""
     store = get_store()
     store.remove_document(document_id)
+    parcalar = pdfmod.chunk_pages(sayfalar) + _sekil_parcalari(document_id, len(sayfalar))
     return store.add_document(document_id, belge["title"] or belge["filename"], ozet,
-                              pdfmod.chunk_pages(sayfalar))
+                              parcalar)
+
+
+def _sekilleri_betimle(document_id: int, data: bytes, bildir, sonuc,
+                       atla: set[int] | None = None) -> None:
+    """Şekil taşıyan sayfaları vision modele betimletip saklar."""
+    try:
+        sayfalar = [no for no in gorsel.sekilli_sayfalar(data) if no not in (atla or set())]
+    except Exception as exc:
+        sonuc.warnings.append(f"Şekil taraması yapılamadı: {exc}")
+        return
+    if not sayfalar:
+        return
+
+    conn = db.connect()
+    dpi = int(config.get("belge.ocr_dpi", 200))
+    yazilan = 0
+    for i, no in enumerate(sorted(sayfalar), 1):
+        bildir("gorsel", i, len(sayfalar))
+        try:
+            metin = gorsel.betimle(pdfmod.render_page(data, no, dpi=dpi), no)
+        except Exception as exc:
+            sonuc.warnings.append(f"s. {no} şekli betimlenemedi: {exc}")
+            continue
+        if not metin:
+            continue
+        conn.execute(
+            "INSERT OR REPLACE INTO figures (document_id, page_no, text) VALUES (?,?,?)",
+            (document_id, no, metin),
+        )
+        yazilan += 1
+    conn.commit()
+    if yazilan:
+        sonuc.warnings.append(f"{yazilan} sayfadaki şekil görselden okundu")
+
+
+def _sekil_parcalari(document_id: int, sayfa_sayisi: int) -> list[pdfmod.Chunk]:
+    """Saklı şekil betimlemelerini chunk'a çevirir.
+
+    AYRI CHUNK, sayfa metnine karıştırılmıyor: bu metni belge yazmadı, model
+    görselden okudu. Bölüm adı ("Şekil — s. 3") bunu kaynak panelinde de,
+    cevabın atfında da görünür kılıyor.
+    """
+    rows = db.connect().execute(
+        "SELECT page_no, text FROM figures WHERE document_id = ? ORDER BY page_no",
+        (document_id,),
+    ).fetchall()
+    return [
+        pdfmod.Chunk(
+            ordinal=10_000 + r["page_no"],      # gövde sıralamasının dışında
+            section=f"Şekil — s. {r['page_no']}",
+            text=f"[Şekil betimlemesi, s. {r['page_no']} — görselden okundu]\n{r['text']}",
+            page_start=r["page_no"],
+            page_end=r["page_no"],
+        )
+        for r in rows
+    ]
 
 
 def listele(owner_id: int | None = None, *, hepsi: bool = False) -> list[dict]:

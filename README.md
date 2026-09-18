@@ -32,6 +32,24 @@ cd web && npm run dev                                    # http://localhost:5173
 Vite `/api` isteklerini 8000'e taşıyor (`web/vite.config.ts`), yani kod iki
 modda da aynı yolu kullanıyor.
 
+## Şekiller ve görseller
+
+Metin çıkarımı yalnızca YAZIYI görüyor: bir şemadaki oklar, bir grafikteki
+eksenler, gömülü bir görselin içindeki yazı metin katmanında yok.
+
+Yükleme sırasında şekil taşıyan sayfalar (gömülü görsel sayfanın %8'inden
+büyükse ya da 25'ten fazla çizim öğesi varsa) vision modele gönderiliyor ve
+model hem içindeki yazıları hem yapıyı (bileşenler, oklar, eksenler, değerler)
+yazıyor. Çıkan metin **ayrı bir chunk** olarak indeksleniyor ve
+`[Şekil betimlemesi, s. N — görselden okundu]` diye etiketleniyor: bu metni
+belge yazmadı, model görselden okudu — cevapta da bu ayrım korunuyor.
+
+- Sayfa başına bir vision çağrısı, yalnızca yüklemede (`belge.max_gorsel_sayfa`
+  ile sınırlı, varsayılan 20).
+- Taranmış sayfalar atlanıyor: onların metnini zaten aynı model okudu (OCR).
+- Betimlemeler `figures` tablosunda; yeniden parçalama model çağırmıyor.
+- Eski belgeler için: `python scripts/sekil_ekle.py [belge_id…]`
+
 ## Kullanıcılar ve erişim
 
 Sistem çok kullanıcılı. Hesapları yönetici açıyor, kimse kendi kendine kayıt

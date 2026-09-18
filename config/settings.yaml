@@ -100,6 +100,12 @@ belge:
   min_chars_per_page: 60
   ocr_dpi: 200                 # sayfa görüntüsü çözünürlüğü
   preprocess: true             # taranmış sayfada eğrilik düzeltme + kontrast
+  # ŞEKİL BETİMLEME. Şekil taşıyan sayfa vision modele gönderilip hem
+  # içindeki yazılar hem yapısı (bileşenler, oklar, eksenler) yazılıyor;
+  # çıkan metin ayrı bir chunk olarak indeksleniyor. Metin çıkarımı bunların
+  # hiçbirini göremiyor. Yalnızca yükleme sırasında, sayfa başına bir çağrı.
+  gorsel_betimleme: true
+  max_gorsel_sayfa: 20         # belge başına en fazla kaç sayfa betimlensin
   #
   # ÖLÇÜLDÜ 2026-09-14 (scripts/ocr_olc.py, gemini-3.5-flash-lite, 3 belge, 7 sayfa):
   #

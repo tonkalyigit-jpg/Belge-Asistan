@@ -287,3 +287,19 @@ def test_dolu_maddeler_birlesmiyor():
 def test_bolum_adi_uc_addan_fazlasini_kisaltiyor():
     assert pdf._bolum_adi("A", "B") == "A · B"
     assert pdf._bolum_adi("A · B · C", "D").endswith("…")
+
+
+def test_sekil_tespiti_metin_sayfasini_secmiyor(ornek_pdfler):
+    """Düz metin sayfası şekil sayılmamalı: her sayfaya vision çağrısı,
+    kotayı yakar ve sayfa metninin kopyasını üretir."""
+    from belge import gorsel
+
+    sayfalar = gorsel.sekilli_sayfalar(ornek_pdfler["kuzey"])
+    # Sentetik sözleşmede çizim yok; bir sayfa bile seçilmemeli.
+    assert sayfalar == [], sayfalar
+
+
+def test_sekil_tespiti_ust_sinira_uyuyor(ornek_pdfler):
+    from belge import gorsel
+
+    assert len(gorsel.sekilli_sayfalar(ornek_pdfler["kuzey_tarama"], en_fazla=1)) <= 1
